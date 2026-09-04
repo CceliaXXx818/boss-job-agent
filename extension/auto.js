@@ -243,6 +243,9 @@ $('detail').onclick = async () => {
     }
     renderDetailTable();
     setStatus('详情抓取完成');
+    if ($('autoAI').checked) {
+      try { await scoreChecked(); } catch (e2) { log('自动打分未执行：' + (e2?.message ?? e2) + '（可稍后点 ⑤）'); }
+    }
   } catch (e) {
     setStatus('失败：' + e.message);
     log('失败：' + e.message);

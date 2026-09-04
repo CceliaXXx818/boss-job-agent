@@ -331,7 +331,12 @@ function detailScrape() {
     if (t.length > desc.length) desc = t;
   }
   if (!desc) desc = bodyText.slice(0, 4000);
-  desc = desc.replace(/^\s*岗位?\s*描述?\s*来自BOSS直聘\s*/, '').trim();
+  desc = desc
+    .replace(/来自BOSS直聘/g, '')
+    .replace(/岗位\s*描述/g, '')
+    .replace(/\(?\(?s{2,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   // 薪资
   const asciiHit = bodyText.match(/(\d{2,3}\s*[-~至—]\s*\d{2,3})\s*[Kk万Ww]/) ?? null;
