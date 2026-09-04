@@ -24,6 +24,14 @@ function setStatus(s) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
+async function refreshQuota() {
+  const cap = Number($('cap').value);
+  const key = `greet-${todayKey()}`;
+  const st = await chrome.storage.local.get(key);
+  const done = Number(st[key] ?? 0);
+  $('quota').textContent = `今日已发 ${done} / ${cap}`;
+}
+
 function parseList(str) {
   return str.split(',').map((s) => s.trim()).filter(Boolean);
 }
@@ -159,6 +167,7 @@ $('greet').onclick = async () => {
       if (sent) {
         done += 1;
         await chrome.storage.local.set({ [key]: done });
+        await refreshQuota();
         log(`  ✓ ${r.detail}（今日 ${done}/${cap}）`);
         row.__status = '已打招呼';
       } else {
@@ -171,11 +180,15 @@ $('greet').onclick = async () => {
       await sleep(1500);
     }
     setStatus(stopped ? '已暂停' : '打招呼流程结束');
+    await refreshQuota();
   } catch (e) {
     setStatus('失败：' + e.message);
     log('失败：' + e.message);
   }
 };
+
+$('cap').addEventListener('change', refreshQuota);
+refreshQuota();
 
 $('stop').onclick = () => {
   stopped = true;
