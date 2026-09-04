@@ -174,6 +174,7 @@ $('greet').onclick = async () => {
         await refreshQuota();
         log(`  ✓ ${r.detail}（今日 ${done}/${cap}）`);
         row.__status = '已打招呼';
+        if (detailMap.has(row.jobId)) detailMap.get(row.jobId).__status = '已打招呼';
       } else {
         const why = r?.detail ?? r?.stage ?? '未知';
         log(`  ✗ 未完成发送：${why}。停在当前页，请人工处理。`);
