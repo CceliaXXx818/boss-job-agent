@@ -264,6 +264,45 @@ $('dcsv').onclick = () => {
   setStatus('已开始下载 boss-jobs-detail.csv');
 };
 
+function buildDailyMD() {
+  const day = new Date().toISOString().slice(0, 10);
+  const items = [...detailMap.values()];
+  const greeted = items.filter((d) => d.__status === '已打招呼').length;
+  const needManual = items.filter((d) => d.__status === '需人工').length;
+  const L = [];
+  L.push(`# BOSS 投递日报 ${day}`);
+  L.push('');
+  L.push(`- 岗位总数：${items.length}`);
+  L.push(`- 已打招呼：${greeted}`);
+  L.push(`- 需人工处理：${needManual}`);
+  L.push('');
+  L.push('| # | 岗位 | 公司 | 城市·区域 | 薪资 | 经验/学历 | 公司规模/融资 | 状态 | JD 摘要 |');
+  L.push('|---|---|---|---|---|---|---|---|---|');
+  items.forEach((d, i) => {
+    const salary = d.asciiSalary || d.salaryRaw || '—';
+    L.push(
+      `| ${i + 1} | ${d.title ?? d.name ?? ''} | ${d.company || ''} | ${d.area || ''} | ${salary} | ${(d.expEdu || []).join('/')} | ${(d.companyMeta || []).join('/') || '—'} | ${d.__status || '待处理'} | ${(d.descFull || '').slice(0, 180)} |`,
+    );
+  });
+  L.push('');
+  L.push('> 薪资(解析)为详情页真实数字。');
+  return { md: L.join('\n'), items, day };
+}
+
+function downloadText(filename, text, mime) {
+  const blob = new Blob([text], { type: mime + ';charset=utf-8' });
+  chrome.downloads.download({ url: URL.createObjectURL(blob), filename });
+}
+
+$('daily').onclick = () => {
+  if (!detailMap.size) return setStatus('先执行 ① + ③ 抓取岗位与详情');
+  const { md, items, day } = buildDailyMD();
+  downloadText(`boss-daily-${day}.md`, md, 'text/markdown');
+  downloadText(`boss-daily-${day}.json`, JSON.stringify(items, null, 1), 'application/json');
+  setStatus(`已导出日报与数据（Downloads/boss-daily-${day}.*）`);
+  log(`已生成日报：岗位 ${items.length}，已打招呼 ${items.filter((x) => x.__status === '已打招呼').length}`);
+};
+
 $('stop').onclick = () => {
   stopped = true;
   $('stop').disabled = true;
