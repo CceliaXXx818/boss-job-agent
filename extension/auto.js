@@ -127,9 +127,9 @@ const GREET_LABELS = ['打招呼', '立即沟通', '和TA聊聊', '开聊', '立
 async function greetOne(tabId, row) {
   const url = 'https://www.zhipin.com' + row.href;
   await chrome.tabs.update(tabId, { url });
-  await sleep(3500);
-  const r = await sendTab(tabId, { type: 'greet', labels: GREET_LABELS });
-  return r ?? { clicked: false, text: 'content 无响应' };
+  await sleep(4000);
+  const r = await sendTab(tabId, { type: 'greetFull', labels: GREET_LABELS });
+  return r ?? { ok: false, stage: 'content_no_response', detail: 'content 无响应' };
 }
 
 $('greet').onclick = async () => {
@@ -154,15 +154,17 @@ $('greet').onclick = async () => {
       if (stopped || done >= cap) break;
       log(`打招呼：${row.title}（${row.company}）`);
       const r = await greetOne(tab.id, row);
-      if (r?.clicked) {
+      const sent = r?.ok === true && (r.stage === 'sent' || r.stage === 'sent_by_enter');
+      if (sent) {
         done += 1;
         await chrome.storage.local.set({ [key]: done });
-        log(`  ✓ 已点击「${r.text}」（今日 ${done}/${cap}）`);
+        log(`  ✓ ${r.detail}（今日 ${done}/${cap}）`);
         row.__status = '已打招呼';
       } else {
-        log(`  ✗ 未找到可点击的打招呼按钮（${r?.text ?? ''}）。停在当前页，请人工处理。`);
+        const why = r?.detail ?? r?.stage ?? '未知';
+        log(`  ✗ 未完成发送：${why}。停在当前页，请人工处理。`);
         row.__status = '需人工';
-        break; // 停在出错岗位，不自动跳到下一个
+        break; // 停在出错岗位，不自动跳下一个
       }
       renderRows(selectedRows);
       await sleep(1500);
