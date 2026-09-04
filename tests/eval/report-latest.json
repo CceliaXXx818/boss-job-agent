@@ -1,0 +1,115 @@
+{
+  "generatedAt": "2026-09-04T12:22:04.569Z",
+  "corpusSize": 270,
+  "accuracy": 100,
+  "thresholdPercent": 95,
+  "failures": [],
+  "perIntent": {
+    "request_resume": {
+      "total": 27,
+      "ok": 27
+    },
+    "request_online_submit": {
+      "total": 21,
+      "ok": 21
+    },
+    "availability_check": {
+      "total": 22,
+      "ok": 22
+    },
+    "start_date_question": {
+      "total": 22,
+      "ok": 22
+    },
+    "location_confirm": {
+      "total": 21,
+      "ok": 21
+    },
+    "salary_discussion": {
+      "total": 22,
+      "ok": 22
+    },
+    "reason_for_leaving": {
+      "total": 20,
+      "ok": 20
+    },
+    "interview_invitation": {
+      "total": 20,
+      "ok": 20
+    },
+    "relocation_request": {
+      "total": 20,
+      "ok": 20
+    },
+    "sensitive_data_request": {
+      "total": 19,
+      "ok": 19
+    },
+    "offer_background_check": {
+      "total": 19,
+      "ok": 19
+    },
+    "greeting_smalltalk": {
+      "total": 18,
+      "ok": 18
+    },
+    "unknown": {
+      "total": 19,
+      "ok": 19
+    }
+  },
+  "worstIntent": [
+    {
+      "intent": "request_resume",
+      "accuracy": 100
+    },
+    {
+      "intent": "request_online_submit",
+      "accuracy": 100
+    },
+    {
+      "intent": "availability_check",
+      "accuracy": 100
+    },
+    {
+      "intent": "start_date_question",
+      "accuracy": 100
+    },
+    {
+      "intent": "location_confirm",
+      "accuracy": 100
+    },
+    {
+      "intent": "salary_discussion",
+      "accuracy": 100
+    },
+    {
+      "intent": "reason_for_leaving",
+      "accuracy": 100
+    },
+    {
+      "intent": "interview_invitation",
+      "accuracy": 100
+    },
+    {
+      "intent": "relocation_request",
+      "accuracy": 100
+    },
+    {
+      "intent": "sensitive_data_request",
+      "accuracy": 100
+    },
+    {
+      "intent": "offer_background_check",
+      "accuracy": 100
+    },
+    {
+      "intent": "greeting_smalltalk",
+      "accuracy": 100
+    },
+    {
+      "intent": "unknown",
+      "accuracy": 100
+    }
+  ]
+}

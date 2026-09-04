@@ -1,0 +1,37 @@
+# ============================================================
+# schedule.example.yaml — 运行窗口 / 限额 / 阈值（Q14 默认值）
+# 使用：cp config/schedule.example.yaml config/schedule.yaml
+# ============================================================
+
+weekdays_only: true
+weekdays: [1, 2, 3, 4, 5]        # 周一~周五
+start_time: "09:30"
+end_time: "17:30"
+report_time: "18:00"
+timezone: Asia/Shanghai
+
+# 时间窗内查 HR 消息的周期（分钟）
+scan_interval_minutes: 30
+
+# 每日打招呼数量（数量不足不凑数）
+daily_minimum: 10
+daily_maximum: 30
+
+# 评分分桶阈值与自动投递门槛（程序执行）
+minimum_match_score: 75
+score_buckets:
+  hot: 80       # ≥80：优先自动打招呼
+  apply: 75     # 75~79：达到自动投递标准
+  review: 65    # 65~74：进入人工确认列表；<65 不投递
+
+# 消息与去重默认值
+no_reply_days: 5                 # 打招呼后 N 天无回复 → NO_REPLY
+same_company_cooldown_days: 30   # 同公司同角色冷却期
+
+# 会话内资源纪律
+max_job_detail_per_session: 15   # 单会话允许读取的 JD 详情上限
+
+# 重试与超时（A6 收敛策略；验证码/登录失效零重试直接 pause）
+retry:
+  max_attempts: 1
+  timeout_ms: 30000

@@ -1,0 +1,94 @@
+{
+  "jobs": [
+    {
+      "externalId": "MOCK-0001", "title": "AI产品经理", "company": "星河智能", "city": "深圳",
+      "salaryText": "35-50K", "salaryMinK": 35, "salaryMaxK": 50,
+      "tags": ["A轮", "AI"], "jobType": "全职", "description": "负责LLM+RAG智能客服产品，推动大模型能力落地，与算法团队协作。",
+      "hrName": "李HR", "hrScript": "request_resume",
+      "evidence": { "dimScores": { "direction": 100, "ai_core": 95, "project": 90, "pm": 85, "industry": 60, "city_mode": 100 }, "matchedEvidence": [ { "requirement": "具备LLM+RAG产品落地经验", "resume_evidence": "主导LLM+RAG智能客服助手上线", "status": "matched" } ], "risks": [] }
+    },
+    {
+      "externalId": "MOCK-0002", "title": "Agent产品经理", "company": "云端智能", "city": "杭州",
+      "salaryText": "30-45K", "salaryMinK": 30, "salaryMaxK": 45,
+      "tags": ["B轮"], "description": "负责多智能体编排与Agent平台产品设计，熟悉Function Calling与工作流。",
+      "hrName": "王HR", "hrScript": "ask_salary",
+      "evidence": { "dimScores": { "direction": 100, "ai_core": 95, "project": 85, "pm": 80, "industry": 50, "city_mode": 100 }, "matchedEvidence": [ { "requirement": "Agent产品设计经验", "resume_evidence": "主导Agent语音外呼探索与POC", "status": "partial" } ], "risks": ["Agent平台为探索与POC，非完整平台经验"] }
+    },
+    {
+      "externalId": "MOCK-0003", "title": "大模型产品经理", "company": "芯算科技", "city": "深圳",
+      "salaryText": "40-60K", "salaryMinK": 40, "salaryMaxK": 60,
+      "tags": ["C轮"], "description": "面向大模型应用的AI产品，负责模型选型评估与产品化，覆盖客服质检等场景。",
+      "hrName": "赵HR", "hrScript": "availability",
+      "evidence": { "dimScores": { "direction": 90, "ai_core": 100, "project": 90, "pm": 90, "industry": 70, "city_mode": 100 }, "matchedEvidence": [ { "requirement": "智能客服质检经验", "resume_evidence": "负责智能质检平台与智能客服", "status": "matched" } ], "risks": [] }
+    },
+    {
+      "externalId": "MOCK-0004", "title": "对话AI产品经理", "company": "语见科技", "city": "杭州",
+      "salaryText": "25-40K", "salaryMinK": 25, "salaryMaxK": 40,
+      "tags": ["天使轮"], "description": "对话式AI产品，智能外呼与客服场景，需要Prompt与知识库设计。",
+      "hrName": "孙HR", "hrScript": "request_online_submit",
+      "evidence": { "dimScores": { "direction": 90, "ai_core": 90, "project": 80, "pm": 75, "industry": 60, "city_mode": 100 }, "matchedEvidence": [ { "requirement": "对话AI产品经验", "resume_evidence": "智能语音外呼与客服项目", "status": "matched" } ], "risks": [] }
+    },
+    {
+      "externalId": "MOCK-0005", "title": "智能客服产品经理", "company": "瑞答信息", "city": "深圳",
+      "salaryText": "25-35K", "salaryMinK": 25, "salaryMaxK": 35,
+      "tags": ["D轮"], "description": "智能客服SaaS产品规划，结合LLM提升解决率。",
+      "hrName": "周HR", "hrScript": "silence",
+      "evidence": { "dimScores": { "direction": 100, "ai_core": 85, "project": 75, "pm": 70, "industry": 60, "city_mode": 100 }, "matchedEvidence": [], "risks": [] }
+    },
+    {
+      "externalId": "MOCK-0006", "title": "AI解决方案产品经理", "company": "恒创软件", "city": "杭州",
+      "salaryText": "20-30K", "salaryMinK": 20, "salaryMaxK": 30,
+      "tags": ["外包"], "jobType": "外包", "description": "AI解决方案交付，偏项目经理角色。",
+      "hrName": "吴HR", "hrScript": "smalltalk",
+      "evidence": { "dimScores": { "direction": 80, "ai_core": 60, "project": 60, "pm": 70, "industry": 50, "city_mode": 100 }, "matchedEvidence": [], "risks": ["外包岗", "偏交付管理"] }
+    },
+    {
+      "externalId": "MOCK-0007", "title": "AI产品经理", "company": "北京数智", "city": "北京",
+      "salaryText": "40-70K", "tags": [], "description": "大模型产品岗位（排除城市样例）。",
+      "hrName": "郑HR", "hrScript": "silence",
+      "evidence": { "dimScores": { "direction": 100, "ai_core": 90, "project": 80, "pm": 80, "industry": 60, "city_mode": 0 }, "matchedEvidence": [], "risks": ["城市北京"] }
+    },
+    {
+      "externalId": "MOCK-0008", "title": "大模型产品经理", "company": "上海云图", "city": "上海",
+      "salaryText": "40-70K", "tags": [], "description": "大模型产品岗位（排除城市样例）。",
+      "hrName": "冯HR", "hrScript": "silence",
+      "evidence": { "dimScores": { "direction": 90, "ai_core": 90, "project": 80, "pm": 80, "industry": 60, "city_mode": 0 }, "matchedEvidence": [], "risks": ["城市上海"] }
+    },
+    {
+      "externalId": "MOCK-0009", "title": "数据标注产品运营", "company": "标注星球", "city": "深圳",
+      "salaryText": "10-15K", "jobType": "纯数据标注", "tags": [], "description": "纯数据标注项目运营（排除岗位类型样例）。",
+      "hrName": "陈HR", "hrScript": "silence",
+      "evidence": { "dimScores": { "direction": 30, "ai_core": 10, "project": 10, "pm": 40, "industry": 40, "city_mode": 100 }, "matchedEvidence": [], "risks": ["纯数据标注"] }
+    },
+    {
+      "externalId": "MOCK-0010", "title": "AI产品销售经理", "company": "睿行科技", "city": "深圳",
+      "salaryText": "20-35K", "jobType": "销售岗位", "tags": [], "description": "负责AI产品对外销售（排除岗位类型样例）。",
+      "hrName": "林HR", "hrScript": "silence",
+      "evidence": { "dimScores": { "direction": 60, "ai_core": 40, "project": 30, "pm": 50, "industry": 60, "city_mode": 100 }, "matchedEvidence": [], "risks": ["销售"] }
+    },
+    {
+      "externalId": "MOCK-0011", "title": "高级产品经理-AI方向", "company": "极光出海", "city": "深圳",
+      "salaryText": "35-50K", "workMode": "长期海外驻场", "tags": [], "description": "长期海外驻场支持海外客户（排除工作方式样例）。",
+      "hrName": "黄HR", "hrScript": "silence",
+      "evidence": { "dimScores": { "direction": 100, "ai_core": 85, "project": 80, "pm": 80, "industry": 60, "city_mode": 100 }, "matchedEvidence": [], "risks": ["长期海外驻场"] }
+    },
+    {
+      "externalId": "MOCK-0012", "title": "AI产品经理", "company": "云天智能", "city": "杭州",
+      "salaryText": "30-45K", "tags": ["A轮"], "description": "大模型智能客服产品，杭州团队。",
+      "hrName": "钱HR", "hrScript": "invite",
+      "evidence": { "dimScores": { "direction": 100, "ai_core": 90, "project": 85, "pm": 80, "industry": 60, "city_mode": 100 }, "matchedEvidence": [ { "requirement": "智能客服与LLM经验", "resume_evidence": "主导智能客服与质检项目", "status": "matched" } ], "risks": [] }
+    },
+    {
+      "externalId": "MOCK-0013", "title": "Agent产品经理", "company": "迈联智能", "city": "深圳",
+      "salaryText": "25-40K", "tags": [], "description": "Agent与工作流产品方向。",
+      "hrName": "许HR", "hrScript": "silence",
+      "evidence": { "dimScores": { "direction": 100, "ai_core": 80, "project": 70, "pm": 70, "industry": 50, "city_mode": 100 }, "matchedEvidence": [], "risks": [] }
+    },
+    {
+      "externalId": "MOCK-0014", "title": "智能客服产品经理", "company": "启言数据", "city": "杭州",
+      "salaryText": "25-38K", "tags": [], "description": "智能客服与智能质检方向，LLM应用。",
+      "hrName": "何HR", "hrScript": "request_resume",
+      "evidence": { "dimScores": { "direction": 100, "ai_core": 85, "project": 80, "pm": 75, "industry": 60, "city_mode": 100 }, "matchedEvidence": [], "risks": [] }
+    }
+  ]
+}

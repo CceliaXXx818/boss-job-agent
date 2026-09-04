@@ -1,0 +1,64 @@
+# ============================================================
+# profile.example.yaml — 候选人画像与目标（与 docs/USER_PROFILE.md 语义一致）
+# 使用：cp config/profile.example.yaml config/profile.yaml 后按需修改
+# 校验：packages/config-loader（Zod strict，未知键会报错）
+# ============================================================
+
+candidate:
+  experience_years: 7        # 总产品经验（年）
+  ai_product_years: 3        # 专注 AI 产品经验（年）
+  summary: "7 年产品经验，3 年专注 AI 产品：语音外呼、LLM+RAG 智能客服、智能质检、对话数字人。"
+
+target:
+  cities:
+    - 深圳
+    - 杭州
+  # 岗位关键词 = 搜索与方向匹配的基准（合并 PRD 与 USER_PROFILE 的目标岗位）
+  job_titles:
+    - AI产品经理
+    - 大模型产品经理
+    - Agent产品经理
+    - 对话AI产品经理
+    - 智能客服产品经理
+    - AI解决方案产品经理
+    - 高级产品经理-AI方向
+  preferred_skills:
+    - LLM
+    - Agent
+    - RAG
+    - Prompt Engineering
+    - Conversational AI
+    - 智能客服
+    - 智能外呼
+    - 智能质检
+    - Workflow
+    - Function Calling
+
+exclude:
+  cities:
+    - 北京
+    - 上海
+  job_types:
+    - 纯数据标注
+    - 纯AI运营
+    - 模型训练运营
+    - 纯项目经理
+    - 销售岗位
+  work_modes:
+    - 长期海外驻场
+
+application:
+  minimum_match_score: 75
+  daily_minimum: 10
+  daily_maximum: 30
+  weekdays_only: true
+  start_time: "09:30"
+  end_time: "17:30"
+  report_time: "18:00"
+
+evidence:
+  projects:
+    - AI智能语音外呼
+    - LLM与RAG智能客服
+    - 智能质检平台
+    - 智能对话数字人

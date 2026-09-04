@@ -1,0 +1,12 @@
+data/private/
+data/*.db
+data/consent.txt
+reports/
+.env
+*.log
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.toolcache/
+.DS_Store

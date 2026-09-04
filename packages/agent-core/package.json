@@ -1,0 +1,25 @@
+{
+  "name": "@job-agent/agent-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@job-agent/domain": "*",
+    "@job-agent/sqlite-store": "*"
+  },
+  "devDependencies": {
+    "@job-agent/config-loader": "*",
+    "@job-agent/conversation-policy": "*",
+    "@job-agent/daily-reporter": "*",
+    "@job-agent/job-matcher": "*",
+    "@job-agent/platform-mock": "*"
+  }
+}

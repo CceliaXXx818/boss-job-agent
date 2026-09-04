@@ -1,0 +1,1086 @@
+{
+ "generatedAt": "2026-09-04",
+ "total": 270,
+ "corpus": [
+  {
+   "text": "发一下简历",
+   "intent": "request_resume"
+  },
+  {
+   "text": "可以看看你的简历吗",
+   "intent": "request_resume"
+  },
+  {
+   "text": "方便发个简历过来吗",
+   "intent": "request_resume"
+  },
+  {
+   "text": "简历发我一份",
+   "intent": "request_resume"
+  },
+  {
+   "text": "有 PDF 简历吗",
+   "intent": "request_resume"
+  },
+  {
+   "text": "麻烦发下附件简历",
+   "intent": "request_resume"
+  },
+  {
+   "text": "把你的简历发我看看",
+   "intent": "request_resume"
+  },
+  {
+   "text": "能发一份简历到这边吗",
+   "intent": "request_resume"
+  },
+  {
+   "text": "简历方便发一份吗",
+   "intent": "request_resume"
+  },
+  {
+   "text": "投递一下在线简历",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "在线简历直接投递即可",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "帮忙点击投递在线简历",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "目前在职吗",
+   "intent": "availability_check"
+  },
+  {
+   "text": "现在还在职？",
+   "intent": "availability_check"
+  },
+  {
+   "text": "您现在是否在职",
+   "intent": "availability_check"
+  },
+  {
+   "text": "还在上一家公司吗",
+   "intent": "availability_check"
+  },
+  {
+   "text": "多久可以到岗",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "什么时候能入职",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "最快什么时候到岗",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "几号能入职",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "接受深圳吗",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "在杭州可以吗",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "能接受base深圳吗",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "你期望薪资多少",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "目前薪资多少",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "期望薪资范围",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "月薪大概要多少",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "为什么从上家离职",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "上份工作离职原因",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "为什么换工作",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "明天下午方便面试吗",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "约个时间聊聊可以吗",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "这周五可以面试吗",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "需要长期驻外",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "能接受去北京吗",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "base上海可以吗",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "提供一下身份证号码",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "把你的银行卡发我登记",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "需要做背调",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "Offer 细节电话聊",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "你好",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "在吗？",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "你们产品经理岗还招吗",
+   "intent": "unknown"
+  },
+  {
+   "text": "我这边了解一下你的情况",
+   "intent": "unknown"
+  },
+  {
+   "text": "想确认下，发下你的简历～",
+   "intent": "request_resume"
+  },
+  {
+   "text": "哈喽，点下在线简历投递谢谢",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "方便问下，在上一家吗？",
+   "intent": "availability_check"
+  },
+  {
+   "text": "方便问下，大概几号到岗？",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "哈喽，能来深圳吗哈",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "哈喽，薪资要求哈",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "哈喽，为什么离职哈",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "麻烦问下，面谈一下谢谢",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "您好，长期驻外吗？",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "麻烦问下，发银行卡号谢谢",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "哈喽，offer沟通哈",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "你好呀",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "你好，介绍下你自己？",
+   "intent": "unknown"
+  },
+  {
+   "text": "能发我一份简历看看吗",
+   "intent": "request_resume"
+  },
+  {
+   "text": "想了解下，投递一下～",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "你好，空窗期多久了吗？",
+   "intent": "availability_check"
+  },
+  {
+   "text": "你好，啥时候能上班吗？",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "想了解下，接受深圳吗谢谢",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "想了解下，待遇期望谢谢",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "想了解下，为啥离开上家谢谢",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "方便问下，哪天方便面试～",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "麻烦问下，去北京长期呀",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "方便问下，身份证照片～",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "想了解下，要做背调谢谢",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "您好？",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "想确认下，我们简单聊两句吗？",
+   "intent": "unknown"
+  },
+  {
+   "text": "哈喽，有空发份简历？",
+   "intent": "request_resume"
+  },
+  {
+   "text": "您好，点投递在线简历",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "想确认下，你现在离职状态吗呀",
+   "intent": "availability_check"
+  },
+  {
+   "text": "想确认下，最快多久入职呀",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "您好，base深圳还是杭州～",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "您好，这个岗位薪资组里定的～",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "您好，跳槽原因～",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "你好，本周能面试吗",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "方便问下，异地工作可以吗哈",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "你好，需要你的身份证号",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "您好，需要毕业证复印件～",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "哈喽哈",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "还有什么想了解的呀",
+   "intent": "unknown"
+  },
+  {
+   "text": "想了解下，发一份简历给我吗？",
+   "intent": "request_resume"
+  },
+  {
+   "text": "麻烦问下，方便投递在线简历吗？",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "还在这家公司吗哈",
+   "intent": "availability_check"
+  },
+  {
+   "text": "最晚什么时候可以到岗哈",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "麻烦问下，接受base吗",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "麻烦问下，期望薪资多少",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "麻烦问下，离开的原因",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "想确认下，面试时间定一下？",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "你好，长期出差谢谢",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "想确认下，发一下身份证？",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "麻烦问下，offer流程沟通",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "在吗。",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "哈喽，这个业务线怎么样哈",
+   "intent": "unknown"
+  },
+  {
+   "text": "您好，可以把简历发我吗呀",
+   "intent": "request_resume"
+  },
+  {
+   "text": "方便问下，投递在线简历吗？",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "哈喽，还上班吗谢谢",
+   "intent": "availability_check"
+  },
+  {
+   "text": "哈喽，什么时候入职谢谢",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "方便问下，来杭州可以吗？",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "方便问下，目前薪资？",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "方便问下，上家为什么走？",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "约个时间面试吗？",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "想确认下，支持常驻杭州吗～",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "需要护照号吗？",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "方便问下，离职证明需要开吗？",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "在么",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "想了解下，还有什么要问我的谢谢",
+   "intent": "unknown"
+  },
+  {
+   "text": "麻烦问下，麻烦发下简历哈",
+   "intent": "request_resume"
+  },
+  {
+   "text": "你好，在线投递一下简历呀",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "想了解下，是否还在职～",
+   "intent": "availability_check"
+  },
+  {
+   "text": "想了解下，入职时间定了吗～",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "你好，base哪里吗？",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "你好，期望薪酬吗？",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "你好，离职原因是什么吗？",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "哈喽，约个面试呀",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "常驻北京",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "哈喽，提供户口本信息呀",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "你好，劳动合同细节吗？",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "您好呀～",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "您好，说下你熟悉的项目～",
+   "intent": "unknown"
+  },
+  {
+   "text": "方便问下，帮我发下简历谢谢",
+   "intent": "request_resume"
+  },
+  {
+   "text": "想确认下，点下在线简历投递哈",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "您好，目前在职不",
+   "intent": "availability_check"
+  },
+  {
+   "text": "您好，什么时候到岗",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "想确认下，在深圳方便吗呀",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "想确认下，想要多少月薪呀",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "想确认下，为什么离职呀",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "想了解下，能面试聊聊吗哈",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "哈喽，外派到北京？",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "想了解下，要下验证码哈",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "想确认下，背调信息呀",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "hi！",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "麻烦问下，团队多少人",
+   "intent": "unknown"
+  },
+  {
+   "text": "你好，简历方便发一下吗～",
+   "intent": "request_resume"
+  },
+  {
+   "text": "投递一下谢谢",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "麻烦问下，有在职吗？",
+   "intent": "availability_check"
+  },
+  {
+   "text": "麻烦问下，能什么时候来？",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "可以在杭州办公吗哈",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "薪资这块什么想法哈",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "为啥离开上家哈",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "您好，面试方便吗谢谢",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "想了解下，需要外派吗？",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "您好，发银行卡号谢谢",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "入职体检哈",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "hello呀",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "方便问下，你对这个岗位有什么问题？",
+   "intent": "unknown"
+  },
+  {
+   "text": "想确认下，简历发我邮箱",
+   "intent": "request_resume"
+  },
+  {
+   "text": "哈喽，点投递在线简历～",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "方便问下，目前在找工作吗吗？",
+   "intent": "availability_check"
+  },
+  {
+   "text": "方便问下，多久能到岗吗？",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "哈喽，接受杭州吗谢谢",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "哈喽，期望薪资谢谢",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "哈喽，跳槽原因谢谢",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "麻烦问下，安排下面试～",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "您好，base北京工作呀",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "麻烦问下，身份证照片～",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "哈喽，offer沟通谢谢",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "你好呀？",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "你好，你简历上写的技能具体说说吗？",
+   "intent": "unknown"
+  },
+  {
+   "text": "简历给我一份？",
+   "intent": "request_resume"
+  },
+  {
+   "text": "想了解下，方便投递在线简历吗",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "你好，现在在职吗呀",
+   "intent": "availability_check"
+  },
+  {
+   "text": "你好，大概几号到岗呀",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "想了解下，能来深圳吗～",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "想了解下，期望薪资多少呢～",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "想了解下，离开的原因～",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "方便问下，面谈一下",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "麻烦问下，长期驻外哈",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "方便问下，需要你的身份证号",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "想了解下，要做背调～",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "在吗在吗哈",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "想确认下，你们公司加班多吗呀",
+   "intent": "unknown"
+  },
+  {
+   "text": "哈喽，发下你的简历吗？",
+   "intent": "request_resume"
+  },
+  {
+   "text": "您好，投递在线简历？",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "想确认下，在上一家吗哈",
+   "intent": "availability_check"
+  },
+  {
+   "text": "想确认下，啥时候能上班哈",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "您好，接受深圳吗",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "您好，现在工资多少",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "您好，上家为什么走",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "你好，哪天方便面试？",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "方便问下，去北京长期谢谢",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "你好，发一下身份证？",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "您好，需要毕业证复印件",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "hello你好。",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "介绍下你自己哈",
+   "intent": "unknown"
+  },
+  {
+   "text": "想了解下，能发我一份简历看看吗呀",
+   "intent": "request_resume"
+  },
+  {
+   "text": "麻烦问下，在线投递一下简历吗？",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "空窗期多久了谢谢",
+   "intent": "availability_check"
+  },
+  {
+   "text": "最快多久入职谢谢",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "麻烦问下，base深圳还是杭州？",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "麻烦问下，薪资要求？",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "麻烦问下，离职原因是什么？",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "想确认下，本周能面试吗吗？",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "你好，异地工作可以吗～",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "想确认下，需要护照号吗？",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "麻烦问下，offer流程沟通？",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "哈喽您好",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "哈喽，我们简单聊两句谢谢",
+   "intent": "unknown"
+  },
+  {
+   "text": "您好，有空发份简历哈",
+   "intent": "request_resume"
+  },
+  {
+   "text": "方便问下，点下在线简历投递呀",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "哈喽，你现在离职状态吗～",
+   "intent": "availability_check"
+  },
+  {
+   "text": "哈喽，最晚什么时候可以到岗～",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "方便问下，接受base吗吗？",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "方便问下，待遇期望吗？",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "方便问下，为什么离职吗？",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "面试时间定一下呀",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "想确认下，长期出差",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "提供户口本信息呀",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "方便问下，离职证明需要开吗吗？",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "你好～",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "想了解下，还有什么想了解的～",
+   "intent": "unknown"
+  },
+  {
+   "text": "麻烦问下，发一份简历给我谢谢",
+   "intent": "request_resume"
+  },
+  {
+   "text": "你好，投递一下哈",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "想了解下，还在这家公司吗",
+   "intent": "availability_check"
+  },
+  {
+   "text": "想了解下，什么时候入职",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "你好，来杭州可以吗呀",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "你好，这个岗位薪资组里定的呀",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "你好，为啥离开上家呀",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "哈喽，约个时间面试哈",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "支持常驻杭州吗？",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "哈喽，要下验证码哈",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "你好，劳动合同细节呀",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "您好！",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "您好，这个业务线怎么样",
+   "intent": "unknown"
+  },
+  {
+   "text": "方便问下，可以把简历发我吗～",
+   "intent": "request_resume"
+  },
+  {
+   "text": "想确认下，点投递在线简历谢谢",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "您好，还上班吗？",
+   "intent": "availability_check"
+  },
+  {
+   "text": "您好，入职时间定了吗？",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "想确认下，base哪里哈",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "想确认下，期望薪资多少哈",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "想确认下，跳槽原因哈",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "想了解下，约个面试谢谢",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "哈喽，常驻北京吗？",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "想了解下，发银行卡号谢谢",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "想确认下，背调信息哈",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "哈喽呀",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "麻烦问下，还有什么要问我的？",
+   "intent": "unknown"
+  },
+  {
+   "text": "你好，麻烦发下简历",
+   "intent": "request_resume"
+  },
+  {
+   "text": "方便投递在线简历吗～",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "麻烦问下，是否还在职吗？",
+   "intent": "availability_check"
+  },
+  {
+   "text": "麻烦问下，什么时候到岗吗？",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "在深圳方便吗谢谢",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "目前薪资谢谢",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "离开的原因谢谢",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "您好，能面试聊聊吗～",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "想了解下，外派到北京呀",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "您好，身份证照片～",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "入职体检谢谢",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "方便问下，说下你熟悉的项目吗？",
+   "intent": "unknown"
+  },
+  {
+   "text": "想确认下，帮我发下简历？",
+   "intent": "request_resume"
+  },
+  {
+   "text": "哈喽，投递在线简历",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "方便问下，目前在职不呀",
+   "intent": "availability_check"
+  },
+  {
+   "text": "方便问下，能什么时候来呀",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "哈喽，可以在杭州办公吗～",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "哈喽，期望薪酬～",
+   "intent": "salary_discussion"
+  },
+  {
+   "text": "哈喽，上家为什么走～",
+   "intent": "reason_for_leaving"
+  },
+  {
+   "text": "麻烦问下，面试方便吗",
+   "intent": "interview_invitation"
+  },
+  {
+   "text": "您好，需要外派哈",
+   "intent": "relocation_request"
+  },
+  {
+   "text": "麻烦问下，需要你的身份证号",
+   "intent": "sensitive_data_request"
+  },
+  {
+   "text": "哈喽，offer沟通～",
+   "intent": "offer_background_check"
+  },
+  {
+   "text": "在么哈",
+   "intent": "greeting_smalltalk"
+  },
+  {
+   "text": "你好，团队多少人呀",
+   "intent": "unknown"
+  },
+  {
+   "text": "简历方便发一下吗吗？",
+   "intent": "request_resume"
+  },
+  {
+   "text": "想了解下，在线投递一下简历？",
+   "intent": "request_online_submit"
+  },
+  {
+   "text": "你好，有在职吗哈",
+   "intent": "availability_check"
+  },
+  {
+   "text": "你好，多久能到岗哈",
+   "intent": "start_date_question"
+  },
+  {
+   "text": "想了解下，接受杭州吗",
+   "intent": "location_confirm"
+  },
+  {
+   "text": "想了解下，想要多少月薪",
+   "intent": "salary_discussion"
+  }
+ ]
+}

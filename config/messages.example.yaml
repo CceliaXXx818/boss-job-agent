@@ -1,0 +1,55 @@
+# ============================================================
+# messages.example.yaml — 问候模板 / 预设应答 / 意图白名单
+# 使用：cp config/messages.example.yaml config/messages.yaml
+# 约定：
+#   - approved: true 的模板才可被 send_greeting / send_template_reply 使用
+#   - 模板内只允许替换 slots 白名单字段（hr_name/job_title/jd_core_requirement/evidence_project），
+#     其余文本来自模板本体，禁止生成简历中不存在的能力
+#   - t1 为本人授权文案（开源示例不含真实姓名；如需带称呼/姓名请在本地 messages.yaml 自行加回）
+# ============================================================
+
+greeting_templates:
+  - template_id: t1
+    approved: true
+    text: "您好，我有7年以上产品经理经验，其中近3年专注AI产品方向，具备海外学习背景及英文沟通能力。过去基于二手车金融业务负责过AI语音外呼、LLM+RAG智能客服等AI产品0-1落地，熟悉Agent Workflow、RAG、Prompt优化和AI效果评估。希望有机会和您进一步交流。"
+    slots: []
+    rotation_weight: 1
+  - template_id: t2
+    approved: true
+    text: "您好，我7年以上产品经理经验、近3年专注AI产品，做过AI语音外呼、LLM+RAG智能客服的0-1落地。看到贵司「{{job_title}}」方向「{{jd_core_requirement}}」与我的经历匹配，希望进一步交流，谢谢。"
+    slots: [job_title, jd_core_requirement]
+    rotation_weight: 1
+  - template_id: t3
+    approved: true
+    text: "您好，看到贵司在招「{{job_title}}」，核心方向「{{jd_core_requirement}}」。我过去做过{{evidence_project}}的AI产品0-1落地，熟悉Agent Workflow、RAG、Prompt优化和AI效果评估，希望有机会深入聊聊。"
+    slots: [job_title, jd_core_requirement, evidence_project]
+    rotation_weight: 1
+
+preset_replies:
+  availability:
+    text: "在职。"
+    approved: true
+  start_date:
+    text: "随时可以到岗。"
+    approved: true
+  location_confirm:
+    text: "接受深圳和杭州。"
+    approved: true
+  smalltalk:
+    text: "您好，我在的，可以聊聊这个岗位吗？"
+    approved: true
+
+# 命中即自动发送简历的 HR 意图（对应 HR_INTENTS 枚举）
+auto_send_intents:
+  - request_resume
+  - request_online_submit
+
+# 命中即升级人工、冻结会话的 HR 意图
+needs_human_intents:
+  - salary_discussion
+  - reason_for_leaving
+  - interview_invitation
+  - relocation_request
+  - sensitive_data_request
+  - offer_background_check
+  - unknown

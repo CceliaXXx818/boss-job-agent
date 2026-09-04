@@ -1,0 +1,8 @@
+# consent 示例（真实 BOSS 接入前置，Q12 / P4）
+# 使用：
+#   1. 确认已阅读并理解 docs/PRD.md「现实问题」一节与平台现行协议；
+#   2. 确认本工具仅以个人授权、低限额、可暂停方式使用；
+#   3. 复制本文件到 data/consent.txt（git 忽略目录），并补一行版本/日期。
+consent:job-application-agent
+version: 1
+date: 2026-09-04

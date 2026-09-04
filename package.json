@@ -1,0 +1,50 @@
+{
+  "name": "job-application-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "本地运行、定时执行、可审计的自动求职投递 Agent（P0：Mock 平台阶段，不连接真实 BOSS）",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:intent-eval": "vitest run packages/conversation-policy/src/intent-eval.test.ts",
+    "test:soak": "vitest run packages/agent-core/src/e2e/soak.test.ts",
+    "demo:day": "vitest run packages/agent-core/src/e2e/demo.test.ts",
+    "scan:redline": "node scripts/redline-scan.mjs",
+    "verify:pinned": "node scripts/verify-pinned.mjs",
+    "ci": "npm run typecheck && npm run verify:pinned && npm test"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis-plugin-group": "1.0.2",
+    "@deepseek-ai/dsh": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-anonymous-user-id": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-atomic-write": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-authorization": "0.1.1-rc.1",
+    "@deepseek-ai/dsh-bash-local": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-code-runtime": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-compaction": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-fs": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-invariants": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-output-retention": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-sandbox": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-scope": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-session-telemetry": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-session-title-llm": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-shell": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-spill": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-subagent-in-process-driver": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-timeout": "0.0.1-rc.1",
+    "@deepseek-ai/dsh-workflow": "0.0.1-rc.1",
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "_comment": "DeepSeek Harness(@deepseek-ai/dsh@0.1.1-rc.2) 不在根 devDependencies：其依赖树含 60+ scoped 包，在 registry 高延迟环境无法安装。锁版由 docs/PINNED.md + scripts/verify-pinned.mjs 强制；具备网络条件时执行 npm i -D @deepseek-ai/dsh@0.1.1-rc.2（P1 dsh-integration 接入，见 IMPLEMENTATION_PLAN P0 决策记录）"
+}
