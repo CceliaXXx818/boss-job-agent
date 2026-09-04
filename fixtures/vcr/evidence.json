@@ -34,5 +34,253 @@
    "候选人画像未明确说明是否接受深圳工作地点，存在地域匹配风险",
    "画像中未提供与算法团队协作的具体案例，可能影响跨团队协作能力评估"
   ]
+ },
+ "evidence-MOCK-0003": {
+  "dimScores": {
+   "direction": 90,
+   "ai_core": 95,
+   "project": 90,
+   "pm": 80,
+   "industry": 70,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "面向大模型应用的AI产品",
+    "resume_evidence": "候选人具有3年AI方向产品经验，偏好技能包括LLM、Agent、RAG、Prompt Engineering、Conversational AI，与JD要求的大模型应用方向高度匹配",
+    "status": "matched"
+   },
+   {
+    "requirement": "负责模型选型评估与产品化",
+    "resume_evidence": "候选人具备LLM与RAG智能客服、智能质检平台等项目经验，涉及模型选型与产品化落地，但画像中未明确提及具体选型评估细节",
+    "status": "partial"
+   },
+   {
+    "requirement": "覆盖客服质检等场景",
+    "resume_evidence": "候选人具有智能质检平台和智能客服项目经验，直接覆盖客服质检场景",
+    "status": "matched"
+   },
+   {
+    "requirement": "工作地点深圳",
+    "resume_evidence": "画像中未提及候选人所在城市或是否接受深圳工作，无法确认",
+    "status": "missing"
+   }
+  ],
+  "risks": [
+   "候选人所在城市未知，可能无法接受深圳工作或需远程办公，存在通勤风险",
+   "画像中未明确展示模型选型评估的具体方法论或案例，可能影响产品化能力评估",
+   "候选人项目经验偏语音与对话，客服质检场景覆盖但可能缺乏其他行业场景经验"
+  ]
+ },
+ "evidence-MOCK-0005": {
+  "dimScores": {
+   "direction": 90,
+   "ai_core": 95,
+   "project": 90,
+   "pm": 80,
+   "industry": 70,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "智能客服SaaS产品规划",
+    "resume_evidence": "有LLM与RAG智能客服项目经验，符合智能客服产品方向",
+    "status": "matched"
+   },
+   {
+    "requirement": "结合LLM提升解决率",
+    "resume_evidence": "偏好技能包含LLM、RAG、Prompt Engineering，具备提升解决率的技术基础",
+    "status": "matched"
+   },
+   {
+    "requirement": "深圳",
+    "resume_evidence": "画像未提及城市偏好，无法确认是否接受深圳",
+    "status": "missing"
+   }
+  ],
+  "risks": [
+   "候选人画像未明确城市意向，可能不接受深圳工作",
+   "候选人未展示SaaS产品规划的具体经验，可能缺乏SaaS商业模式理解",
+   "候选人项目经验偏向AI技术实现，产品管理通用能力证据不足"
+  ]
+ },
+ "evidence-MOCK-0013": {
+  "dimScores": {
+   "direction": 85,
+   "ai_core": 90,
+   "project": 80,
+   "pm": 75,
+   "industry": 60,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "Agent与工作流产品方向",
+    "resume_evidence": "候选人具备LLM、Agent、RAG等技能，且有AI智能语音外呼、智能客服等项目经验，与Agent产品方向高度相关",
+    "status": "matched"
+   },
+   {
+    "requirement": "工作地点深圳",
+    "resume_evidence": "画像中未提及城市偏好或当前所在地，无法确认是否接受深圳工作",
+    "status": "missing"
+   }
+  ],
+  "risks": [
+   "候选人画像未明确是否接受深圳工作地点，存在地域匹配风险",
+   "画像中未提供具体产品管理案例细节，PM通用能力评估依据不足"
+  ]
+ },
+ "evidence-MOCK-0002": {
+  "dimScores": {
+   "direction": 85,
+   "ai_core": 90,
+   "project": 80,
+   "pm": 75,
+   "industry": 60,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "负责多智能体编排与Agent平台产品设计",
+    "resume_evidence": "候选人画像中提及偏好技能包括Agent，且有AI智能语音外呼、LLM与RAG智能客服等项目经验，但未明确提及多智能体编排或Agent平台产品设计的具体经验",
+    "status": "partial"
+   },
+   {
+    "requirement": "熟悉Function Calling与工作流",
+    "resume_evidence": "画像中未直接提及Function Calling或工作流相关经验，但偏好技能包括LLM、Agent、RAG等，可能间接涉及",
+    "status": "partial"
+   },
+   {
+    "requirement": "岗位方向为Agent产品经理",
+    "resume_evidence": "候选人AI方向经验3年，涉及对话AI、智能客服等，与Agent产品方向相关",
+    "status": "matched"
+   }
+  ],
+  "risks": [
+   "候选人画像未明确提及多智能体编排或Agent平台产品设计的直接经验，可能缺乏相关深度",
+   "未提及Function Calling的具体使用经验，需进一步确认",
+   "岗位在杭州，但画像未提及城市偏好或通勤情况，存在不确定性"
+  ]
+ },
+ "evidence-MOCK-0004": {
+  "dimScores": {
+   "direction": 95,
+   "ai_core": 90,
+   "project": 95,
+   "pm": 80,
+   "industry": 85,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "对话式AI产品，智能外呼与客服场景",
+    "resume_evidence": "有AI智能语音外呼、LLM与RAG智能客服项目经验",
+    "status": "matched"
+   },
+   {
+    "requirement": "需要Prompt与知识库设计",
+    "resume_evidence": "偏好技能包含Prompt Engineering和RAG，具备知识库设计能力",
+    "status": "matched"
+   },
+   {
+    "requirement": "对话AI产品经理",
+    "resume_evidence": "有智能对话数字人项目经验，且偏好Conversational AI",
+    "status": "matched"
+   }
+  ],
+  "risks": [
+   "岗位在杭州，候选人画像未明确城市偏好，存在异地风险",
+   "天使轮公司稳定性风险，候选人7年经验可能期望更高平台"
+  ]
+ },
+ "evidence-MOCK-0006": {
+  "dimScores": {
+   "direction": 85,
+   "ai_core": 90,
+   "project": 85,
+   "pm": 75,
+   "industry": 60,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "AI解决方案交付，偏项目经理角色",
+    "resume_evidence": "候选人7年产品经验，其中3年AI方向，有多个AI项目交付经验，具备项目管理能力",
+    "status": "matched"
+   },
+   {
+    "requirement": "AI解决方案交付",
+    "resume_evidence": "证据项目包括AI智能语音外呼、LLM与RAG智能客服、智能质检平台、智能对话数字人，均为AI解决方案",
+    "status": "matched"
+   },
+   {
+    "requirement": "偏项目经理角色",
+    "resume_evidence": "候选人总产品经验7年，有多个项目落地经验，但画像中未明确提及项目管理认证或专职项目经理经历",
+    "status": "partial"
+   }
+  ],
+  "risks": [
+   "岗位为外包性质，候选人可能对稳定性有顾虑",
+   "工作地点杭州，画像中未明确候选人所在城市及是否接受杭州工作",
+   "候选人虽有多AI项目经验，但未明确其项目管理方法论或工具使用情况"
+  ]
+ },
+ "evidence-MOCK-0012": {
+  "dimScores": {
+   "direction": 90,
+   "ai_core": 95,
+   "project": 90,
+   "pm": 80,
+   "industry": 60,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "大模型智能客服产品",
+    "resume_evidence": "有LLM与RAG智能客服项目经验，偏好技能包括LLM、RAG、Conversational AI",
+    "status": "matched"
+   },
+   {
+    "requirement": "杭州团队",
+    "resume_evidence": "画像未提及城市偏好或是否接受杭州工作",
+    "status": "missing"
+   }
+  ],
+  "risks": [
+   "候选人未明确表达对杭州工作地点的接受度，存在地域匹配风险",
+   "行业经验未明确提及客服行业，可能缺乏特定行业知识"
+  ]
+ },
+ "evidence-MOCK-0014": {
+  "dimScores": {
+   "direction": 90,
+   "ai_core": 95,
+   "project": 90,
+   "pm": 80,
+   "industry": 70,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "智能客服与智能质检方向",
+    "resume_evidence": "证据项目包含LLM与RAG智能客服、智能质检平台",
+    "status": "matched"
+   },
+   {
+    "requirement": "LLM应用",
+    "resume_evidence": "偏好技能包含LLM、Agent、RAG、Prompt Engineering、Conversational AI",
+    "status": "matched"
+   },
+   {
+    "requirement": "智能客服产品经理（杭州）",
+    "resume_evidence": "画像未提及城市偏好或是否接受杭州工作",
+    "status": "partial"
+   }
+  ],
+  "risks": [
+   "候选人未明确表示接受杭州工作地点，存在城市匹配风险",
+   "画像未提供具体产品管理能力细节，如需求分析、项目管理等，需进一步评估",
+   "行业经验未明确提及金融或客服行业，可能影响行业匹配度"
+  ]
  }
 }

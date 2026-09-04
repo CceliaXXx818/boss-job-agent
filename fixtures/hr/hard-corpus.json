@@ -1,0 +1,20 @@
+[
+  { "text": "简历里写的那个外呼案例，方便的话发我邮箱看下详细材料", "intent": "request_resume" },
+  { "text": "刚你投递的岗位我们很感兴趣，能把你做过的 LLM 项目总结发我一份吗", "intent": "request_resume" },
+  { "text": "你好，看到你之前做过智能外呼，我们正在做类似的 AI 客服，方便的话把简历发我看下", "intent": "request_resume" },
+  { "text": "系统里有一份在线简历，你点开我主页投递一下就可以", "intent": "request_online_submit" },
+  { "text": "想先确认下你的求职状态，方便透露吗", "intent": "availability_check" },
+  { "text": "这边流程如果顺利，你预计什么时候能开始新工作", "intent": "start_date_question" },
+  { "text": "我们深圳团队，你考虑来深圳发展吗，base 广州也可以聊", "intent": "location_confirm" },
+  { "text": "方便说下你上一份的薪资构成吗，比如现金加期权这种", "intent": "salary_discussion" },
+  { "text": "离开现在的公司，主要是出于什么考虑呢", "intent": "reason_for_leaving" },
+  { "text": "周三或周五下午，你有空过来我们聊一下这个岗位吗", "intent": "interview_invitation" },
+  { "text": "这个岗位常驻东莞，偶尔要去北京出差半年，你 OK 吗", "intent": "relocation_request" },
+  { "text": "走流程需要你身份证复印件和学历证明，先发我一下", "intent": "sensitive_data_request" },
+  { "text": "薪酬结构这部分要等 offer 评审，我们可以先电话聊聊", "intent": "offer_background_check" },
+  { "text": "我们还在用你的简历筛选，有进展会通知你", "intent": "unknown" },
+  { "text": "你之前做过除智能客服外的其他 AI 产品吗", "intent": "unknown" },
+  { "text": "这个岗位需要带团队，你带过人吗", "intent": "unknown" },
+  { "text": "你们产品线现在主要服务什么行业的客户", "intent": "unknown" },
+  { "text": "如果项目节奏快，你能接受经常加班吗", "intent": "unknown" }
+]

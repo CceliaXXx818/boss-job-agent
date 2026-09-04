@@ -1,4 +1,94 @@
 {
+ "652985d6580b873034cfc411": {
+  "intent": "request_resume",
+  "method": "model",
+  "confidence": 0.95
+ },
+ "dc54091555a0b8a5cc95765c": {
+  "intent": "request_resume",
+  "method": "model",
+  "confidence": 0.95
+ },
+ "3c802445138745990f289fa4": {
+  "intent": "request_resume",
+  "method": "rule",
+  "confidence": 1
+ },
+ "f8870bbddca1d39b8677c111": {
+  "intent": "request_online_submit",
+  "method": "rule",
+  "confidence": 1
+ },
+ "cd2222e822d4dd2c8d7521c0": {
+  "intent": "availability_check",
+  "method": "model",
+  "confidence": 0.95
+ },
+ "b333feb4da7730806281c015": {
+  "intent": "start_date_question",
+  "method": "model",
+  "confidence": 0.9
+ },
+ "cfbf0054345d31154e768dcb": {
+  "intent": "location_confirm",
+  "method": "rule",
+  "confidence": 1
+ },
+ "6bcfd74d92436d8837e84cb0": {
+  "intent": "salary_discussion",
+  "method": "rule",
+  "confidence": 1
+ },
+ "b924698d071ca2cf1fff7efe": {
+  "intent": "reason_for_leaving",
+  "method": "model",
+  "confidence": 0.95
+ },
+ "c19699ea2f81156667b57103": {
+  "intent": "interview_invitation",
+  "method": "model",
+  "confidence": 0.95
+ },
+ "18916dddf369624e694cda5f": {
+  "intent": "relocation_request",
+  "method": "rule",
+  "confidence": 1
+ },
+ "ad7f55fe1d2ca68e22db8797": {
+  "intent": "sensitive_data_request",
+  "method": "rule",
+  "confidence": 1
+ },
+ "bf1031397c8ef3f0f212b97e": {
+  "intent": "offer_background_check",
+  "method": "rule",
+  "confidence": 1
+ },
+ "7792b7c410efb6ae293df9ca": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "d57883f60259beb9eaad13ef": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "00e9dea7bd866467226b781d": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "5ed7b98ff4a0ef3e324e934f": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.85
+ },
+ "26402b5b2bc6c9a58e73d8b6": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
  "2d14cef468052bfc13b2745e": {
   "intent": "request_resume",
   "method": "rule",
@@ -157,7 +247,7 @@
  "6835a0cfeb8f30c113d6a9dd": {
   "intent": "unknown",
   "method": "model",
-  "confidence": 0.7
+  "confidence": 0.6
  },
  "304b5244c8406d80ea83610b": {
   "intent": "unknown",
@@ -197,17 +287,17 @@
  "449928b97b365cd4922d9f6c": {
   "intent": "unknown",
   "method": "model",
-  "confidence": 0.85
+  "confidence": 0.8
  },
  "abf817bfdae55b38c6c3a6f2": {
   "intent": "unknown",
   "method": "model",
-  "confidence": 0.8
+  "confidence": 0.85
  },
  "5f28bbd55c371dba3c1a4165": {
   "intent": "unknown",
   "method": "model",
-  "confidence": 0.7
+  "confidence": 0.8
  },
  "251bdb14e7db7f697364ea46": {
   "intent": "unknown",

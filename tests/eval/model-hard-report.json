@@ -1,0 +1,116 @@
+{
+  "generatedAt": "2026-09-04T12:50:09.122Z",
+  "corpusSize": 18,
+  "exact": 18,
+  "modelFallbackUsed": 11,
+  "byCase": [
+    {
+      "text": "简历里写的那个外呼案例，方便的话发我邮箱看下详细材料",
+      "expected": "request_resume",
+      "got": "request_resume",
+      "method": "model"
+    },
+    {
+      "text": "刚你投递的岗位我们很感兴趣，能把你做过的 LLM 项目总结发我一份吗",
+      "expected": "request_resume",
+      "got": "request_resume",
+      "method": "model"
+    },
+    {
+      "text": "你好，看到你之前做过智能外呼，我们正在做类似的 AI 客服，方便的话把简历发我看下",
+      "expected": "request_resume",
+      "got": "request_resume",
+      "method": "rule"
+    },
+    {
+      "text": "系统里有一份在线简历，你点开我主页投递一下就可以",
+      "expected": "request_online_submit",
+      "got": "request_online_submit",
+      "method": "rule"
+    },
+    {
+      "text": "想先确认下你的求职状态，方便透露吗",
+      "expected": "availability_check",
+      "got": "availability_check",
+      "method": "model"
+    },
+    {
+      "text": "这边流程如果顺利，你预计什么时候能开始新工作",
+      "expected": "start_date_question",
+      "got": "start_date_question",
+      "method": "model"
+    },
+    {
+      "text": "我们深圳团队，你考虑来深圳发展吗，base 广州也可以聊",
+      "expected": "location_confirm",
+      "got": "location_confirm",
+      "method": "rule"
+    },
+    {
+      "text": "方便说下你上一份的薪资构成吗，比如现金加期权这种",
+      "expected": "salary_discussion",
+      "got": "salary_discussion",
+      "method": "rule"
+    },
+    {
+      "text": "离开现在的公司，主要是出于什么考虑呢",
+      "expected": "reason_for_leaving",
+      "got": "reason_for_leaving",
+      "method": "model"
+    },
+    {
+      "text": "周三或周五下午，你有空过来我们聊一下这个岗位吗",
+      "expected": "interview_invitation",
+      "got": "interview_invitation",
+      "method": "model"
+    },
+    {
+      "text": "这个岗位常驻东莞，偶尔要去北京出差半年，你 OK 吗",
+      "expected": "relocation_request",
+      "got": "relocation_request",
+      "method": "rule"
+    },
+    {
+      "text": "走流程需要你身份证复印件和学历证明，先发我一下",
+      "expected": "sensitive_data_request",
+      "got": "sensitive_data_request",
+      "method": "rule"
+    },
+    {
+      "text": "薪酬结构这部分要等 offer 评审，我们可以先电话聊聊",
+      "expected": "offer_background_check",
+      "got": "offer_background_check",
+      "method": "rule"
+    },
+    {
+      "text": "我们还在用你的简历筛选，有进展会通知你",
+      "expected": "unknown",
+      "got": "unknown",
+      "method": "model"
+    },
+    {
+      "text": "你之前做过除智能客服外的其他 AI 产品吗",
+      "expected": "unknown",
+      "got": "unknown",
+      "method": "model"
+    },
+    {
+      "text": "这个岗位需要带团队，你带过人吗",
+      "expected": "unknown",
+      "got": "unknown",
+      "method": "model"
+    },
+    {
+      "text": "你们产品线现在主要服务什么行业的客户",
+      "expected": "unknown",
+      "got": "unknown",
+      "method": "model"
+    },
+    {
+      "text": "如果项目节奏快，你能接受经常加班吗",
+      "expected": "unknown",
+      "got": "unknown",
+      "method": "model"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -9,6 +9,8 @@ import { renderReportCSV, renderReportMD } from '@job-agent/daily-reporter';
 import type { DailyReportData } from '@job-agent/daily-reporter';
 import { DEFAULT_RUBRIC, finalizeEvidence, hardFilter } from '@job-agent/job-matcher';
 import type { ExtractedEvidence } from '@job-agent/job-matcher';
+import { ModelClient, vcrCall, vcrHas } from '@job-agent/model-client';
+import { extractEvidenceWithModel } from '@job-agent/model-client';
 import { MockMarket, MockPlatformAdapter } from '@job-agent/platform-mock';
 import type { MockJob } from '@job-agent/platform-mock';
 import { SqliteStore } from '@job-agent/sqlite-store';
@@ -50,6 +52,41 @@ describe('demo:day（npm run demo:day）', () => {
     };
     const mockJobs: MockJob[] = catalog.jobs.map(({ evidence: _ev, ...rest }) => rest as MockJob);
     const market = new MockMarket(mockJobs);
+    const EVIDENCE_FILE = join(ROOT, 'fixtures', 'vcr', 'evidence.json');
+    const CANDIDATE = {
+      experienceYears: 7,
+      aiProductYears: 3,
+      evidenceProjects: ['AI智能语音外呼', 'LLM与RAG智能客服', '智能质检平台', '智能对话数字人'],
+      preferredSkills: ['LLM', 'Agent', 'RAG', 'Prompt Engineering', 'Conversational AI'],
+    };
+    /** 证据来源：A-2 真模型接入。有录制→回放；RUN_MODEL_LIVE=1→真调；否则回落 fixture 证据。 */
+    async function evidenceFor(entry: { externalId: string }, job: { title: string; city: string; jobType?: string; description: string; tags: string[] }): Promise<{
+      evidence: ExtractedEvidence;
+      source: 'model' | 'fixture';
+    }> {
+      const id = `evidence-${entry.externalId}`;
+      const live = process.env.RUN_MODEL_LIVE === '1';
+      if (live || vcrHas(EVIDENCE_FILE, id)) {
+        try {
+          const evidence = await vcrCall({
+            file: EVIDENCE_FILE,
+            id,
+            live,
+            produce: () => extractEvidenceWithModel(new ModelClient(), { job, candidate: CANDIDATE }),
+          });
+          return { evidence, source: 'model' };
+        } catch {
+          /* 无 Key / 无录制：回落 fixture */
+        }
+      }
+      const catEntry = catalog.jobs.find((j) => j.externalId === entry.externalId)!;
+      const fixture = (catEntry.evidence ?? {
+        dimScores: { direction: 0, ai_core: 0, project: 0, pm: 0, industry: 0, city_mode: 0 },
+        matchedEvidence: [],
+        risks: ['无证据'],
+      }) as unknown as ExtractedEvidence;
+      return { evidence: fixture, source: 'fixture' };
+    }
     const adapter = new MockPlatformAdapter(market, clock);
     const gate = new ActionGate(repo, { maxAttempts: 1 });
     const templates = config.messages.greeting_templates.filter((t) => t.approved);
@@ -69,6 +106,8 @@ describe('demo:day（npm run demo:day）', () => {
     let greeted = 0;
     const greetedIds: string[] = [];
     let greetIdx = 0;
+    let evidenceModelCount = 0;
+    let evidenceFixtureCount = 0;
     for (const city of config.profile.target.cities) {
       const summaries = await adapter.searchJobs({ city, keywords: ['产品'] });
       for (const s of summaries) {
@@ -95,11 +134,10 @@ describe('demo:day（npm run demo:day）', () => {
           repo.transitionApplication(appId, 'FILTERED', nowIso(), { hard_filter_reason: hf.reason, decision: 'filtered' });
           continue;
         }
-        const ev = (entry.evidence ?? {
-          dimScores: { direction: 0, ai_core: 0, project: 0, pm: 0, industry: 0, city_mode: 0 },
-          matchedEvidence: [],
-          risks: ['无证据'],
-        }) as ExtractedEvidence;
+        const evSrc = await evidenceFor({ externalId: d.externalId }, { title: d.title, city: d.city, jobType: d.jobType, description: d.description, tags: d.tags });
+        if (evSrc.source === 'model') evidenceModelCount++;
+        else evidenceFixtureCount++;
+        const ev = evSrc.evidence;
         const out = finalizeEvidence(ev, DEFAULT_RUBRIC, config.schedule.score_buckets);
         if (out.bucket === 'hot' || out.bucket === 'apply') {
           repo.transitionApplication(appId, 'QUEUED', nowIso(), { decision: 'auto_greet', score_total: out.scoreTotal, rubric_version: out.rubricVersion });
@@ -187,6 +225,7 @@ describe('demo:day（npm run demo:day）', () => {
     writeFileSync(join(reportDir, `demo-${DAY}.md`), md);
     writeFileSync(join(reportDir, `demo-${DAY}.csv`), csv);
     console.log(`\n[demo:day] 打招呼 ${greeted}，自动发简历 ${resumeSent}，升级人工 ${needsHuman}`);
+    console.log(`[demo:day] 证据来源：真模型×${evidenceModelCount}，fixture×${evidenceFixtureCount}（RUN_MODEL_LIVE=1 可强制真调重录）`);
     console.log(`[demo:day] 报告: reports/demo-${DAY}.md / .csv\n`);
     expect(greeted).toBeGreaterThan(0);
     expect(resumeSent).toBeGreaterThan(0);
