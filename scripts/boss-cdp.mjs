@@ -38,16 +38,20 @@ try {
 try {
   const contexts = browser.contexts();
   const pages = contexts.flatMap((c) => c.pages()).filter((p) => !p.url().startsWith('devtools://'));
-  let page = pages.find((p) => p.url().includes('zhipin.com'));
+  const zhipinPages = pages.filter((p) => p.url().includes('zhipin.com'));
+  // 优先"搜索结果页"（URL 含 /web/geek/jobs），其次任何 BOSS 页
+  const page =
+    zhipinPages.find((p) => /\/web\/geek\/jobs/.test(p.url())) ?? zhipinPages[0];
   if (!page) {
-    console.log('[boss:cdp] 未发现已打开的 BOSS 标签页，将新建一个。');
-    page = await contexts[0]?.newPage();
-    if (!page) throw new Error('无可用 context');
+    console.error('[boss:cdp] 未发现已打开的 BOSS 标签页，请先在你的 Chrome 里打开 BOSS。');
+    process.exit(3);
   }
-  console.log('[boss:cdp] 当前标签：', page.url());
+  await page.bringToFront().catch(() => {});
+  console.log('[boss:cdp] 已选中标签：', page.url());
   if (noNav) {
-    if (!page.url().includes('zhipin.com')) {
-      console.error('[boss:cdp] --now 模式要求当前标签已是 BOSS 页面。请先在 Chrome 中打开目标列表页再重试。');
+    if (/^https:\/\/www\.zhipin\.com\/?$/.test(page.url())) {
+      console.error('[boss:cdp] 当前选中的是 BOSS 首页而非搜索结果页。请在 Chrome 中把“搜索结果”标签保持打开并激活，然后重跑。');
+      console.error('[boss:cdp] 也可直接在这个标签里手动输入：AI产品经理（深圳），确认列表出现后再重跑本命令。');
       process.exit(4);
     }
     console.log('[boss:cdp] --now 模式：不跳转，等待列表稳定后直接读取当前页面…');
