@@ -35,7 +35,7 @@ try {
   // 粗略登录检测：页面主体不再出现“扫码/登录”提示，最多等 180 秒
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
-    const body = (await page.evaluate(() => document.body?.innerText?.slice(0, 4000) ?? '')) as string;
+    const body = await page.evaluate(() => document.body?.innerText?.slice(0, 4000) ?? '');
     const loginish = /登录|扫码|验证/.test(body);
     if (!loginish) {
       console.log('[boss:wizard] 检测到已登录。');
@@ -45,7 +45,7 @@ try {
   }
   await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(6000);
-  const dump = (await page.evaluate(() => {
+  const dump = await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a'))
       .filter((a) => (a.getAttribute('href') ?? '').includes('/job_detail/'))
       .slice(0, 15);
@@ -60,7 +60,7 @@ try {
       };
     });
     return { url: location.href, cards };
-  })) as { url: string; cards: unknown[] };
+  });
   if (dump.cards.length === 0) {
     console.error('[boss:wizard] 未抓取到岗位卡片。可能原因：未登录/出现验证/页面结构变化。请在浏览器里人工确认后重跑。');
     process.exit(3);
