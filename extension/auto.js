@@ -13,6 +13,10 @@ const BOOST_TOKENS = [
 let selectedRows = [];
 let stopped = false;
 
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
 const logEl = $('log');
 function log(msg) {
   logEl.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
@@ -189,6 +193,76 @@ $('greet').onclick = async () => {
 
 $('cap').addEventListener('change', refreshQuota);
 refreshQuota();
+
+const detailMap = new Map();
+
+function renderDetailTable() {
+  const tb = document.querySelector('#dtbl tbody');
+  if (!detailMap.size) {
+    tb.innerHTML = '<tr><td colspan="6" class="skip">先点 ③ 抓取详情</td></tr>';
+    return;
+  }
+  tb.innerHTML = [...detailMap.values()]
+    .map(
+      (d) =>
+        `<tr data-href="${escapeHtml('https://www.zhipin.com' + (d.href ?? ''))}" style="cursor:pointer">` +
+        `<td>${escapeHtml(d.title)}</td>` +
+        `<td>${escapeHtml(d.salaryRaw || d.salary)}</td>` +
+        `<td>${escapeHtml(d.asciiSalary || '字体加密待解码')}</td>` +
+        `<td>${escapeHtml((d.tags || []).join(' / '))}</td>` +
+        `<td>${escapeHtml((d.companyMeta || []).join(' / '))}</td>` +
+        `<td>${escapeHtml((d.descPreview || '').slice(0, 160))}</td></tr>`,
+    )
+    .join('');
+  tb.querySelectorAll('tr[data-href]').forEach((tr) => {
+    tr.onclick = () => chrome.tabs.create({ url: tr.dataset.href });
+  });
+}
+
+$('detail').onclick = async () => {
+  const rows = checkedRows();
+  if (!rows.length) return setStatus('没有勾选岗位，请先 ① 并勾选');
+  try {
+    stopped = false;
+    const tab = await jobTab();
+    for (const row of rows) {
+      if (stopped) break;
+      log(`抓详情：${row.title}`);
+      await chrome.tabs.update(tab.id, { url: 'https://www.zhipin.com' + row.href });
+      await sleep(4200);
+      try {
+        const r = await sendTab(tab.id, { type: 'detailScrape' });
+        detailMap.set(row.jobId, { ...row, ...(r ?? {}) });
+        log(`  ✓ ${r?.name || row.title}（薪资解析：${r?.asciiSalary || '未取到'}）`);
+      } catch (e) {
+        log('  ✗ 详情读取失败：' + (e?.message ?? e));
+      }
+      renderDetailTable();
+    }
+    renderDetailTable();
+    setStatus('详情抓取完成');
+  } catch (e) {
+    setStatus('失败：' + e.message);
+    log('失败：' + e.message);
+  }
+};
+
+function toCSVDetail() {
+  const keys = ['title', 'salary', 'asciiSalary', 'company', 'area', 'tags', 'companyMeta', 'descPreview', 'jobId', 'href'];
+  const esc = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
+  const lines = [];
+  for (const d of detailMap.values()) {
+    lines.push(keys.map((k) => esc(Array.isArray(d[k]) ? d[k].join(' / ') : d[k])).join(','));
+  }
+  return ['岗位,薪资(原文),薪资(解析),公司,地区,经验学历标签,公司规模融资,JD摘要,JobId,链接', ...lines].join('\n');
+}
+
+$('dcsv').onclick = () => {
+  if (!detailMap.size) return setStatus('先执行 ③ 抓详情');
+  const blob = new Blob(['\ufeff' + toCSVDetail()], { type: 'text/csv;charset=utf-8' });
+  chrome.downloads.download({ url: URL.createObjectURL(blob), filename: 'boss-jobs-detail.csv' });
+  setStatus('已开始下载 boss-jobs-detail.csv');
+};
 
 $('stop').onclick = () => {
   stopped = true;

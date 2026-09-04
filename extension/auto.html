@@ -37,6 +37,8 @@
   </div>
   <div class="row">
     <button id="run">① 开始搜索与筛选</button>
+    <button id="detail">③ 抓勾选岗位详情（丰富信息）</button>
+    <button id="dcsv">导出详情CSV</button>
     <button id="greet">② 对选中岗位打招呼</button>
     <button id="stop" disabled>暂停</button>
     <span id="status"></span>
@@ -44,6 +46,11 @@
   <p class="warn">提示：请确保浏览器里已有一个<b>已登录 BOSS</b>的标签页（建议是搜索结果页）。本页会自动复用它来跑流程；遇验证/异常会自动停止，不会绕检。</p>
   <table id="tbl">
     <thead><tr><th></th><th>岗位</th><th>公司</th><th>地区</th><th>经验/学历</th><th>评分</th><th>状态</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <h3>详情明细（③ 抓取后出现；点击行在新标签打开岗位）</h3>
+  <table id="dtbl">
+    <thead><tr><th>岗位</th><th>薪资(原文)</th><th>薪资(解析)</th><th>经验/学历/标签</th><th>公司规模/融资</th><th>JD 摘要</th></tr></thead>
     <tbody></tbody>
   </table>
   <h3>执行日志</h3>

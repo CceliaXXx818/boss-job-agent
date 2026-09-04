@@ -299,12 +299,57 @@ async function greetFull(labels, text) {
   };
 }
 
+function detailScrape() {
+  const top = () => document.body?.innerText?.slice(0, 6000) ?? '';
+  // JD 正文候选容器
+  const descSel = [
+    '[class*="job-sec-text"]',
+    '[class*="job-desc"]',
+    '[class*="job-intro"]',
+    '[class*="job-detail"] .desc',
+    '[class*="job-description"]',
+    '.description',
+  ];
+  let desc = '';
+  for (const s of descSel) {
+    const el = document.querySelector(s);
+    const t = (el?.textContent ?? '').trim();
+    if (t.length > desc.length) desc = t;
+  }
+  if (!desc) desc = top().slice(0, 1200);
+  // 薪资：先找 ASCII 数字形态；否则抓原始显示文本
+  const asciiHit = top().match(/(\d{2,3}\s*[-~至—]\s*\d{2,3})\s*[Kk万Ww]/) ?? null;
+  const salarySel = document.querySelector(
+    '[class*="salary"], [class*="job-salary"], .job-salary, [class*="pay"]',
+  );
+  const salaryRaw = (salarySel?.textContent ?? '').replace(/\s+/g, ' ').trim() || '';
+  // 标签：经验/学历/技能
+  const tags = Array.from(document.querySelectorAll('.tag-list li, [class*="job-tag"], [class*="tag-list"] li'))
+    .map((el) => (el.textContent ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  // 公司规模/融资信息：扫可见叶子文本
+  const meta = visibleLeafTexts().filter((t) => /人|未融资|天使轮|[A-E]轮|已上市|不需要融资|融资|外资|合资/.test(t)).slice(0, 6);
+  const name = (document.querySelector('[class*="job-name"],.job-name,.name,[class*="job-title"]')?.textContent ?? '').trim().slice(0, 80) || '';
+  return {
+    url: location.href,
+    name,
+    salaryRaw: salaryRaw || '',
+    asciiSalary: asciiHit ? asciiHit[1] + 'K' : '',
+    tags,
+    companyMeta: meta,
+    descPreview: desc.replace(/\s+/g, ' ').slice(0, 400),
+  };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'scrape') {
     const rows = cardRows();
     sendResponse({ ok: true, url: location.href, count: rows.length, rows });
   } else if (msg?.type === 'greet') {
     sendResponse({ ok: true, ...clickGreet(msg.labels ?? []) });
+  } else if (msg?.type === 'detailScrape') {
+    sendResponse({ ok: true, ...detailScrape() });
   } else if (msg?.type === 'greetFull') {
     greetFull(msg.labels ?? [], msg.text ?? '').then((r) => sendResponse({ ok: true, ...r }));
     return true; // 异步响应
