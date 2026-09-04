@@ -299,8 +299,22 @@ async function greetFull(labels, text) {
   };
 }
 
+function uniqueKeep(arr) {
+  const seen = new Set();
+  const out = [];
+  for (const x of arr) {
+    const k = x.trim();
+    if (k && !seen.has(k)) {
+      seen.add(k);
+      out.push(k);
+    }
+  }
+  return out;
+}
+
 function detailScrape() {
-  const top = () => document.body?.innerText?.slice(0, 6000) ?? '';
+  const bodyText = document.body?.innerText ?? '';
+  const top = bodyText.slice(0, 6000);
   // JD 正文候选容器
   const descSel = [
     '[class*="job-sec-text"]',
@@ -316,27 +330,39 @@ function detailScrape() {
     const t = (el?.textContent ?? '').trim();
     if (t.length > desc.length) desc = t;
   }
-  if (!desc) desc = top().slice(0, 1200);
-  // 薪资：先找 ASCII 数字形态；否则抓原始显示文本
-  const asciiHit = top().match(/(\d{2,3}\s*[-~至—]\s*\d{2,3})\s*[Kk万Ww]/) ?? null;
-  const salarySel = document.querySelector(
-    '[class*="salary"], [class*="job-salary"], .job-salary, [class*="pay"]',
+  if (!desc) desc = top.slice(0, 1200);
+  // 薪资：ASCII 数字形态
+  const asciiHit = top.match(/(\d{2,3}\s*[-~至—]\s*\d{2,3})\s*[Kk万Ww]/) ?? null;
+  const salaryRaw =
+    (document.querySelector('[class*="salary"], [class*="job-salary"], .job-salary, [class*="pay"]')?.textContent ?? '')
+      .replace(/\s+/g, ' ')
+      .trim() || '';
+  // 经验/学历/技能：扫描可见叶子文本 + 过滤福利词
+  const BENEFIT = /福利|补贴|团建|下午茶|带薪|绩效|奖金|股票|期权|五险|年终|零食|生日|体检|餐补|交通|通讯/;
+  const leaves = visibleLeafTexts();
+  const expEdu = uniqueKeep(
+    leaves.filter((t) => /^\d+-\d+年|经验不限|^\d+年以内|^\d+年以上|在校|应届|本科|硕士|大专|博士/.test(t)).slice(0, 6),
   );
-  const salaryRaw = (salarySel?.textContent ?? '').replace(/\s+/g, ' ').trim() || '';
-  // 标签：经验/学历/技能
-  const tags = Array.from(document.querySelectorAll('.tag-list li, [class*="job-tag"], [class*="tag-list"] li'))
-    .map((el) => (el.textContent ?? '').trim())
-    .filter(Boolean)
-    .slice(0, 12);
-  // 公司规模/融资信息：扫可见叶子文本
-  const meta = visibleLeafTexts().filter((t) => /人|未融资|天使轮|[A-E]轮|已上市|不需要融资|融资|外资|合资/.test(t)).slice(0, 6);
-  const name = (document.querySelector('[class*="job-name"],.job-name,.name,[class*="job-title"]')?.textContent ?? '').trim().slice(0, 80) || '';
+  const skills = uniqueKeep(
+    leaves
+      .filter((t) => t.length >= 2 && t.length <= 12 && !BENEFIT.test(t) && !/\d/.test(t))
+      .slice(0, 10),
+  );
+  const name =
+    (document.querySelector('[class*="job-name"],.job-name,.name,[class*="job-title"]')?.textContent ?? '').trim().slice(0, 80) || '';
+  // 公司规模/融资：只认明确标记
+  const meta = uniqueKeep(
+    visibleLeafTexts().filter((t) =>
+      /未融资|不需要融资|天使轮|[ABCDEF]轮|已上市|新三板|战略融资|股权融资|[0-9]{2,4}\s*[-~到]?\s*[0-9]*\s*人|[0-9]+\s*人以上|外资|合资|国企|上市公司/.test(t),
+    ),
+  ).slice(0, 6);
   return {
     url: location.href,
     name,
     salaryRaw: salaryRaw || '',
     asciiSalary: asciiHit ? asciiHit[1] + 'K' : '',
-    tags,
+    expEdu,
+    skills,
     companyMeta: meta,
     descPreview: desc.replace(/\s+/g, ' ').slice(0, 400),
   };
