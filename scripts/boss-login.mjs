@@ -23,7 +23,10 @@ const waitEnter = () => new Promise((resolve) => rl.once('line', resolve));
 
 console.log('[boss:login] 启动浏览器（登录目录：data/private/boss-profile）...');
 const launchOpts = { headless: false };
-if (process.env.BOSS_CHROME === '1') launchOpts.channel = 'chrome'; // 用系统 Chrome（真实指纹）
+if (process.env.BOSS_CHROME === '1') {
+  launchOpts.channel = 'chrome'; // 用系统 Chrome（真实指纹）
+  launchOpts.ignoreDefaultArgs = ['--no-sandbox']; // 避免“不受支持的命令行标记”黄条
+}
 let browser;
 try {
   browser = await chromium.launchPersistentContext(PROFILE, launchOpts);
