@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "description": "在你已登录的 BOSS 网页里自动搜索/筛选/打招呼（低限额、可暂停）。个人求职助手，风险自担。",
   "permissions": ["downloads", "tabs", "storage"],
-  "host_permissions": ["https://*.zhipin.com/*"],
+  "host_permissions": ["https://*.zhipin.com/*", "http://127.0.0.1/*", "http://localhost/*"],
   "action": {
     "default_popup": "popup.html",
     "default_title": "BOSS 自动投递助手"

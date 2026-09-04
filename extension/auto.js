@@ -366,6 +366,8 @@ async function scoreChecked() {
     descFull: d.descFull || '',
   }));
   try {
+    const h = await fetch('http://127.0.0.1:8799/health', { signal: AbortSignal.timeout(2000) });
+    if (!h.ok) throw new Error('本机服务未就绪');
     const res = await fetch('http://127.0.0.1:8799/score', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
