@@ -312,10 +312,10 @@ function uniqueKeep(arr) {
   return out;
 }
 
+// 纯函数：单次读取当前视口内容
 function detailScrape() {
   const bodyText = document.body?.innerText ?? '';
-  const top = bodyText.slice(0, 6000);
-  // JD 正文候选容器
+  // JD 正文：优先大块描述容器，去掉“岗位描述来自BOSS直聘”类前缀
   const descSel = [
     '[class*="job-sec-text"]',
     '[class*="job-desc"]',
@@ -330,42 +330,78 @@ function detailScrape() {
     const t = (el?.textContent ?? '').trim();
     if (t.length > desc.length) desc = t;
   }
-  if (!desc) desc = top.slice(0, 1200);
-  // 薪资：ASCII 数字形态
-  const asciiHit = top.match(/(\d{2,3}\s*[-~至—]\s*\d{2,3})\s*[Kk万Ww]/) ?? null;
+  if (!desc) desc = bodyText.slice(0, 4000);
+  desc = desc.replace(/^\s*岗位?\s*描述?\s*来自BOSS直聘\s*/, '').trim();
+
+  // 薪资
+  const asciiHit = bodyText.match(/(\d{2,3}\s*[-~至—]\s*\d{2,3})\s*[Kk万Ww]/) ?? null;
   const salaryRaw =
     (document.querySelector('[class*="salary"], [class*="job-salary"], .job-salary, [class*="pay"]')?.textContent ?? '')
       .replace(/\s+/g, ' ')
       .trim() || '';
-  // 经验/学历/技能：扫描可见叶子文本 + 过滤福利词
-  const BENEFIT = /福利|补贴|团建|下午茶|带薪|绩效|奖金|股票|期权|五险|年终|零食|生日|体检|餐补|交通|通讯/;
-  const leaves = visibleLeafTexts();
+
+  // 经验/学历：只认明确表述（全页去重，顺序按出现）
   const expEdu = uniqueKeep(
-    leaves.filter((t) => /^\d+-\d+年|经验不限|^\d+年以内|^\d+年以上|在校|应届|本科|硕士|大专|博士/.test(t)).slice(0, 6),
-  );
-  const skills = uniqueKeep(
-    leaves
-      .filter((t) => t.length >= 2 && t.length <= 12 && !BENEFIT.test(t) && !/\d/.test(t))
-      .slice(0, 10),
-  );
+    bodyText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(
+        (l) =>
+          l &&
+          l.length <= 20 &&
+          (/(经验不限|^\d+-\d+年|^\d+年以内|^\d+年以上|应届|在校)/.test(l) ||
+            /^(本科|硕士|大专|博士|中专)(及以下|及以上)?$/.test(l.replace(/\s/g, ''))),
+      ),
+  ).slice(0, 4);
+
+  // 公司规模/融资：强关键词（行级匹配）
+  const meta = uniqueKeep(
+    bodyText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(
+        (l) =>
+          l &&
+          l.length <= 30 &&
+          /(未融资|不需要融资|天使轮|[ABCDEF]轮(及以上)?|已上市|新三板|战略融资|股权融资|[0-9]{2,4}\s*[-~到至]?\s*[0-9]{2,4}\s*人|[0-9]{2,4}\s*人以上)/.test(
+            l.replace(/\s/g, ''),
+          ),
+      ),
+  ).slice(0, 5);
+
   const name =
     (document.querySelector('[class*="job-name"],.job-name,.name,[class*="job-title"]')?.textContent ?? '').trim().slice(0, 80) || '';
-  // 公司规模/融资：只认明确标记
-  const meta = uniqueKeep(
-    visibleLeafTexts().filter((t) =>
-      /未融资|不需要融资|天使轮|[ABCDEF]轮|已上市|新三板|战略融资|股权融资|[0-9]{2,4}\s*[-~到]?\s*[0-9]*\s*人|[0-9]+\s*人以上|外资|合资|国企|上市公司/.test(t),
-    ),
-  ).slice(0, 6);
   return {
     url: location.href,
     name,
     salaryRaw: salaryRaw || '',
     asciiSalary: asciiHit ? asciiHit[1] + 'K' : '',
     expEdu,
-    skills,
     companyMeta: meta,
-    descPreview: desc.replace(/\s+/g, ' ').slice(0, 400),
+    descFull: desc.replace(/\s+/g, ' ').slice(0, 1600),
   };
+}
+
+// 滚动到页面各处（触发懒加载）后合并两次读取
+async function detailScrapeFull() {
+  const first = detailScrape();
+  try {
+    for (let y = 0; y < document.body.scrollHeight; y += 900) window.scrollTo(0, y);
+    window.scrollTo(0, document.body.scrollHeight);
+    await sleepInPage(1400);
+    const second = detailScrape();
+    return {
+      ...second,
+      name: second.name || first.name,
+      salaryRaw: second.salaryRaw || first.salaryRaw,
+      asciiSalary: second.asciiSalary || first.asciiSalary,
+      expEdu: uniqueKeep([...first.expEdu, ...second.expEdu]).slice(0, 4),
+      companyMeta: uniqueKeep([...first.companyMeta, ...second.companyMeta]).slice(0, 5),
+      descFull: second.descFull.length >= first.descFull.length ? second.descFull : first.descFull,
+    };
+  } catch {
+    return first;
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -375,7 +411,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   } else if (msg?.type === 'greet') {
     sendResponse({ ok: true, ...clickGreet(msg.labels ?? []) });
   } else if (msg?.type === 'detailScrape') {
-    sendResponse({ ok: true, ...detailScrape() });
+    detailScrapeFull().then((r) => sendResponse({ ok: true, ...r }));
+    return true; // 异步（滚动后二次读取）
   } else if (msg?.type === 'greetFull') {
     greetFull(msg.labels ?? [], msg.text ?? '').then((r) => sendResponse({ ok: true, ...r }));
     return true; // 异步响应

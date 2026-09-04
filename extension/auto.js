@@ -209,9 +209,9 @@ function renderDetailTable() {
         `<td>${escapeHtml(d.title)}</td>` +
         `<td>${escapeHtml(d.salaryRaw || d.salary)}</td>` +
         `<td>${escapeHtml(d.asciiSalary || '字体加密待解码')}</td>` +
-        `<td>${escapeHtml(([...(d.expEdu||[]), ...(d.skills||[])]).join(' / '))}</td>` +
+        `<td>${escapeHtml((d.expEdu || []).join(' / '))}</td>` +
         `<td>${escapeHtml((d.companyMeta || []).join(' / '))}</td>` +
-        `<td>${escapeHtml((d.descPreview || '').slice(0, 160))}</td></tr>`,
+        `<td>${escapeHtml((d.descFull || d.descPreview || '').slice(0, 500))}</td></tr>`,
     )
     .join('');
   tb.querySelectorAll('tr[data-href]').forEach((tr) => {
@@ -248,13 +248,13 @@ $('detail').onclick = async () => {
 };
 
 function toCSVDetail() {
-  const keys = ['title', 'salary', 'asciiSalary', 'company', 'area', 'expEdu', 'skills', 'companyMeta', 'descPreview', 'jobId', 'href'];
+  const keys = ['title', 'salary', 'asciiSalary', 'company', 'area', 'expEdu', 'companyMeta', 'descFull', 'jobId', 'href'];
   const esc = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
   const lines = [];
   for (const d of detailMap.values()) {
     lines.push(keys.map((k) => esc(Array.isArray(d[k]) ? d[k].join(' / ') : d[k])).join(','));
   }
-  return ['岗位,薪资(原文),薪资(解析),公司,地区,经验/学历,技能标签,公司规模融资,JD摘要,JobId,链接', ...lines].join('\n');
+  return ['岗位,薪资(原文),薪资(解析),公司,地区,经验/学历,公司规模融资,JD全文,JobId,链接', ...lines].join('\n');
 }
 
 $('dcsv').onclick = () => {
