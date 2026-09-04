@@ -9,4 +9,4 @@ dist/
 coverage/
 *.tsbuildinfo
 .toolcache/
-.DS_Store
+.DS_Storetests/boss-jobs*.csv
