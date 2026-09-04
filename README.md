@@ -1,31 +1,28 @@
 # job-application-agent（自动求职投递 Agent）
 
 > 本地运行、定时执行、可审计的个人求职助手（DeepSeek Harness + Mock 优先）。
-> **当前状态：P0–P3 已完成（规划稿 G0/G1/G2/G3 全绿，`npm run ci` 全通过）；真实平台接入（P4）默认关闭，需用户显式授权。**
+> **当前状态：v0.1 可用（本地 Mock 全链路 + 可选真实模型）。轻量收尾，不追加大功能。**
 
 ## 是什么 / 不是什么
 
 - ✅ 是：工作日自动搜索岗位 → 匹配排序（程序算分）→ 主动打招呼（已批准模板）→ 识别 HR 消息 → **明确索要时自动发简历** → 18:00 日报（MD/CSV）；一切外部写操作 **可审计、可暂停、幂等不重复**。
 - ❌ 不是：验证码绕过 / 反检测 / 代理池 / 批量账号；不会替你承诺面试时间、薪资、地点；不把简历、Cookie、账号、API Key 提交到 Git。
 
-## 快速开始（本地，无需真实招聘平台）
+## 日常使用（就这三句）
 
 ```bash
-npm ci                      # 依赖安装（.npmrc 已固定 legacy-peer-deps）
-npm run ci                  # typecheck + 版本锁定校验（含 dsh 实测版本断言）+ 全量测试（19 文件 / 107 用例）
-npm run demo:day            # 1 个虚拟工作日一键演示（Mock，无网络），产出 reports/demo-*.md|csv
-npm run test:intent-eval    # HR 意图评测（270 条语料 ≥95% 门槛）
-npm run test:soak           # 5 虚拟工作日 soak（0 重复 / 0 状态丢失）
-npm run scan:redline        # Git 红线扫描（手机号/邮箱/API Key/私钥）
-npm run agent:smoke       # 模型真实调用自注册工具（需 DEEPSEEK_API_KEY，验证 Harness 闭环）
+npm ci                      # 换机器/第一次时安装依赖
+npm run demo:day            # 跑一遍"虚拟工作日"，自动产出日报
+open reports/demo-2026-09-04.md   # 看日报（投递/回复/待人工/异常）
 ```
 
-首次使用请复制示例配置并按需修改（真实姓名/语气请本地处理）：
+每次想看结果就跑 `npm run demo:day`（约 1 秒），报告落在 `reports/`。
+想确认代码没坏：`npm run ci`（全量自检，107 个用例）。
 
+可选（有 DeepSeek API Key 时）：
 ```bash
-cp config/profile.example.yaml  config/profile.yaml
-cp config/messages.example.yaml config/messages.yaml
-cp config/schedule.example.yaml config/schedule.yaml
+npm run test:model-live    # 用真实模型重跑证据提取与意图判定评测
+npm run agent:smoke        # 演示"模型真的调用我们注册的工具"
 ```
 
 ## 仓库结构
@@ -59,10 +56,10 @@ docs/                                 # PRD/USER_PROFILE + 5 份设计文档 + �
 | P1 | Mock 垂直切片（全链路 + 三重门 + E2E） | ✅ |
 | P2 | 质量：意图 95% / 5 日 soak / 场景矩阵 / 兜底 / 保留清理 | ✅ |
 | P3 | 浏览器执行层 + BOSS 禁运实现 | ✅（全量 107 用例绿） |
-| P4 | 真实平台接入（**默认关**，需你授权+真机） | ⏸ 待办（consent/Q12） |
-| P5 | 开源发布 | 🚧 本 README 为骨架；LICENSE 已加（Apache-2.0） |
+| P4 | 真实平台接入（默认关） | 🚫 暂不做（Backlog：需授权+真机） |
+| P5 | 开源发布 | ✅ 基础已具备（README/CI/LICENSE）；细节 Backlog |
 
-真机待办（记录于 PINNED/HARNESS_BINDING/PLAN）：配模型凭据后跑 `dsh --profile headless` LLM 烟测（HARNESS_BINDING U3b–U7，dsh 已安装且 U1/U2 已核验）、Playwright 浏览器 L4、BOSS 真实 DOM 校准、CLI 人工队列（Q13）。
+Backlog（暂不做，仅记录）：19 工具全量注册与模型驱动 E2E、定时唤醒、Playwright L4、BOSS 真实接入（需授权）、CLI 人工队列、DB 备份。
 
 ## 设计文档
 
