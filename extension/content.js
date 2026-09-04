@@ -75,10 +75,29 @@ function diagnose() {
   return { url: location.href, sampleHtml, sampleClasses };
 }
 
+function clickGreet(labels) {
+  const cands = Array.from(document.querySelectorAll('button, a, span, div[role="button"]'))
+    .filter((el) => {
+      const t = (el.textContent ?? '').trim();
+      return t && t.length <= 12 && labels.some((l) => t === l || t.startsWith(l));
+    })
+    .filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 20 && r.height > 20;
+    });
+  if (!cands.length) return { clicked: false, text: '未找到打招呼按钮' };
+  const el = cands[0];
+  const text = (el.textContent ?? '').trim();
+  el.click();
+  return { clicked: true, text };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'scrape') {
     const rows = cardRows();
     sendResponse({ ok: true, url: location.href, count: rows.length, rows });
+  } else if (msg?.type === 'greet') {
+    sendResponse({ ok: true, ...clickGreet(msg.labels ?? []) });
   } else if (msg?.type === 'diagnose') {
     sendResponse({ ok: true, ...diagnose() });
   }

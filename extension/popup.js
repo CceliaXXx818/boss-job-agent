@@ -20,6 +20,10 @@ async function activeZhipinTab() {
   return tab;
 }
 
+document.getElementById('auto').onclick = () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('auto.html') });
+};
+
 document.getElementById('scrape').onclick = async () => {
   const tab = await activeZhipinTab();
   if (!tab) return;

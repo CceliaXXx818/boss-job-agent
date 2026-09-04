@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>BOSS 自动投递助手</title>
+  <style>
+    body { font: 14px/1.6 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 880px; }
+    h1 { font-size: 18px; }
+    .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+    label { font-weight: 600; }
+    button { padding: 6px 12px; cursor: pointer; }
+    input[type="number"] { width: 64px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 5px 7px; font-size: 13px; text-align: left; vertical-align: top; }
+    .ok { color: #1a7f37; }
+    .warn { color: #b35900; }
+    .skip { color: #888; }
+    #log { white-space: pre-wrap; background: #f6f8fa; padding: 8px; font-size: 12px; max-height: 200px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>BOSS 自动投递助手（自动搜索→筛选→打招呼）</h1>
+  <div class="row">
+    <label>城市:</label>
+    <select id="city"><option value="101210100">杭州</option><option value="101280600">深圳</option><option value="101210100,101280600">杭州+深圳</option></select>
+    <label>关键词:</label>
+    <input id="query" value="AI产品经理,Agent产品经理" style="width:280px" />
+    <label>每日上限:</label>
+    <input id="cap" type="number" value="5" min="1" max="10" />
+    <label><input type="checkbox" id="exec" /> 实际执行打招呼（风险知悉）</label>
+  </div>
+  <div class="row">
+    <button id="run">① 开始搜索与筛选</button>
+    <button id="greet">② 对选中岗位打招呼</button>
+    <button id="stop" disabled>暂停</button>
+    <span id="status"></span>
+  </div>
+  <p class="warn">提示：请确保浏览器里已有一个<b>已登录 BOSS</b>的标签页（建议是搜索结果页）。本页会自动复用它来跑流程；遇验证/异常会自动停止，不会绕检。</p>
+  <table id="tbl">
+    <thead><tr><th></th><th>岗位</th><th>公司</th><th>地区</th><th>经验/学历</th><th>评分</th><th>状态</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <h3>执行日志</h3>
+  <div id="log"></div>
+  <script src="auto.js"></script>
+</body>
+</html>

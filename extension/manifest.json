@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "BOSS 岗位助手（只读）",
-  "version": "0.1.0",
-  "description": "在你已打开的 BOSS 直聘岗位列表页上，只读抓取岗位卡片并导出 CSV/JSON。不登录、不点击、不发消息。",
-  "permissions": ["downloads"],
+  "name": "BOSS 自动投递助手",
+  "version": "0.2.0",
+  "description": "在你已登录的 BOSS 网页里自动搜索/筛选/打招呼（低限额、可暂停）。个人求职助手，风险自担。",
+  "permissions": ["downloads", "tabs", "storage"],
   "host_permissions": ["https://*.zhipin.com/*"],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "抓取当前页岗位"
+    "default_title": "BOSS 自动投递助手"
   },
   "content_scripts": [
     {
