@@ -21,6 +21,7 @@ const port = process.env.BOSS_CDP_PORT ?? '9222';
 const endpoint = `http://127.0.0.1:${port}`;
 const query = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 'AI产品经理';
 const city = process.argv.includes('--hangzhou') ? 101210100 : 101280600;
+const noNav = process.argv.includes('--now'); // --now：不跳转，直接读取你当前打开的页面
 const searchUrl = `https://www.zhipin.com/web/geek/jobs?query=${encodeURIComponent(query)}&city=${city}`;
 
 console.log(`[boss:cdp] 连接本机 Chrome（${endpoint}）...`);
@@ -44,7 +45,15 @@ try {
     if (!page) throw new Error('无可用 context');
   }
   console.log('[boss:cdp] 当前标签：', page.url());
-  await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  if (noNav) {
+    if (!page.url().includes('zhipin.com')) {
+      console.error('[boss:cdp] --now 模式要求当前标签已是 BOSS 页面。请先在 Chrome 中打开目标列表页再重试。');
+      process.exit(4);
+    }
+    console.log('[boss:cdp] --now 模式：不跳转，等待列表稳定后直接读取当前页面…');
+  } else {
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  }
   let found = 0;
   for (let i = 0; i < 14; i++) {
     await page.waitForTimeout(3000);
@@ -61,11 +70,17 @@ try {
       .slice(0, 15);
     const cards = links.map((a) => {
       const el = a.closest('li, .job-card-wrapper, [class*="job-card"], [class*="job-list"]') ?? a;
+      const classChain = [];
+      let node = el;
+      for (let i = 0; i < 3 && node; i++) {
+        const c = node.getAttribute?.('class');
+        if (c) classChain.push(c.slice(0, 160));
+        node = node.parentElement;
+      }
       return {
         href: a.getAttribute('href'),
-        title: a.innerText.split('\n')[0] ?? '',
-        textLines: (el.innerText ?? '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 12),
-        boxClass: (el.getAttribute('class') ?? '').slice(0, 120),
+        textLines: (el.innerText ?? '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 14),
+        classChain,
         pageTitle: document.title,
       };
     });
