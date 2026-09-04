@@ -22,7 +22,9 @@ const rl = createInterface({ input: process.stdin, output: process.stdout });
 const waitEnter = () => new Promise((resolve) => rl.once('line', resolve));
 
 console.log('[boss:login] 启动浏览器（登录目录：data/private/boss-profile）...');
-const browser = await chromium.launchPersistentContext(PROFILE, { headless: false });
+const launchOpts = { headless: false };
+if (process.env.BOSS_CHROME === '1') launchOpts.channel = 'chrome'; // 用系统 Chrome（真实指纹）
+const browser = await chromium.launchPersistentContext(PROFILE, launchOpts);
 try {
   const page = browser.pages()[0] ?? (await browser.newPage());
   // 只打开主页；之后不做任何自动跳转或读取，避免触发风控自动刷新。
