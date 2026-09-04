@@ -115,18 +115,32 @@ async function greetFull(labels, text) {
     return rect.width > 40 && rect.height > 20;
   });
 
-  if (editor && text && text.length > 0) {
-    // 填入我们的话术（兼容 React 受控组件）
-    if (editor.tagName === 'TEXTAREA') {
-      const proto = Object.getPrototypeOf(editor);
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-      setter?.call(editor, text);
+  // 填充话术：用浏览器原生插入文本（触发真实 input 事件，BOSS 编辑器才能启用发送）
+  async function setEditorText(el, value) {
+    el.focus();
+    if (el.isContentEditable) {
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('insertText', false, value);
     } else {
-      editor.textContent = text;
+      const proto = Object.getPrototypeOf(el);
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      setter?.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    editor.dispatchEvent(new Event('input', { bubbles: true }));
-    editor.dispatchEvent(new Event('change', { bubbles: true }));
-    await sleepInPage(600);
+    const now = (el.value ?? el.textContent ?? '').trim();
+    if (now !== value.trim()) {
+      el.textContent = value; // 兜底直接写入
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+  if (editor && text && text.length > 0) {
+    await setEditorText(editor, text);
+    await sleepInPage(900);
   }
 
   // 聊天区域：输入框就近的 chat/dialog/panel/editor 容器
@@ -162,12 +176,13 @@ async function greetFull(labels, text) {
     return list.length ? JSON.stringify(list) : '（聊天区域内未捕获到任何可见控件）';
   };
 
-  // 发送按钮：文字/aria/class 命中；兜底“输入框底部右端最近的小控件”
+  // 发送按钮：只认“发送”文本的最内层叶子节点（避免点到外层容器），或 aria/class 命中的叶子；兜底右下角
+  const isLeaf = (el) => el.children.length === 0 && el.tagName !== 'SVG' && el.tagName !== 'svg';
   const isSendLike = (el) => {
+    if (!isLeaf(el)) return false;
     const t = (el.textContent ?? '').trim();
-    if (t && t.length <= 10 && /发\s*送/.test(t) && !/简历|附件|照片|图片|文件/.test(t)) return true;
-    const aria = (el.getAttribute('aria-label') ?? '') + (el.getAttribute('title') ?? '');
-    if (/发送|send/i.test(aria)) return true;
+    if (t === '发送' || t === '发 送') return true;
+    if (/发送|send/i.test((el.getAttribute('aria-label') ?? '') + (el.title ?? ''))) return true;
     if (/send|发送/.test(el.className ?? '')) return true;
     return false;
   };
