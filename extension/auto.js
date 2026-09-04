@@ -303,6 +303,38 @@ function buildDailyMD() {
   return { md: L.join('\n'), items, day };
 }
 
+function buildDailyHTML(items, day) {
+  const esc = escapeHtml;
+  const rows = items
+    .map((d, i) => {
+      const salary = d.asciiSalary || d.salaryRaw || '—';
+      const jd = d.descFull || '';
+      return `<tr>
+        <td>${i + 1}</td>
+        <td><b>${esc(d.title || d.name || '')}</b></td>
+        <td>${esc(d.company || '')}</td>
+        <td>${esc(d.area || '')}</td>
+        <td style="white-space:nowrap">${esc(salary)}</td>
+        <td>${esc((d.expEdu || []).join(' / ') || '—')}</td>
+        <td>${esc((d.companyMeta || []).join(' / ') || '—')}</td>
+        <td>${d.__ai?.ok ? `<b style="color:${d.__ai.tier === 'hot' ? '#1a7f37' : d.__ai.tier === 'apply' ? '#b08800' : d.__ai.tier === 'review' ? '#b35900' : '#c00'}">${d.__ai.score} 分 · ${esc(d.__ai.label)}</b>` : '—'}</td>
+        <td>${d.__status || '待处理'}</td>
+        <td title="${esc(jd)}">${esc(jd.slice(0, 200))}${jd.length > 200 ? '…' : ''}</td>
+      </tr>`;
+    })
+    .join('');
+  const greeted = items.filter((d) => d.__status === '已打招呼').length;
+  return `<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>BOSS 投递日报 ${day}</title>
+<style>body{font:14px/1.6 system-ui,sans-serif;margin:24px;color:#222}h1{font-size:20px}
+.sum{display:flex;gap:24px;margin:12px 0;color:#444}.sum b{color:#1a7f37}
+table{border-collapse:collapse;width:100%;margin-top:8px}th,td{border:1px solid #d9dee3;padding:6px 9px;font-size:13px;text-align:left;vertical-align:top}
+th{background:#f3f6f9;white-space:nowrap}tr:hover td{background:#fafcff}code{background:#f4f4f4;padding:1px 4px}</style></head>
+<body><h1>BOSS 投递日报 ${day}</h1>
+<div class="sum"><span>岗位总数：<b>${items.length}</b></span><span>已打招呼：<b>${greeted}</b></span><span>优先打招呼(≥80)：<b>${items.filter((x) => x.__ai?.score >= 80).length}</b></span><span>需人工：<b>${items.filter((x) => x.__status === '需人工').length}</b></span></div>
+<table><thead><tr><th>#</th><th>岗位</th><th>公司</th><th>城市·区域</th><th>薪资</th><th>经验/学历</th><th>规模/融资</th><th>模型分/建议</th><th>状态</th><th>JD 摘要</th></tr></thead><tbody>${rows}</tbody></table>
+<p style="color:#888;font-size:12px">悬停 JD 列可看全文。刷新重新抓取后重新生成。</p></body></html>`;
+}
+
 function downloadText(filename, text, mime) {
   const blob = new Blob([text], { type: mime + ';charset=utf-8' });
   chrome.downloads.download({ url: URL.createObjectURL(blob), filename });
@@ -311,9 +343,12 @@ function downloadText(filename, text, mime) {
 $('daily').onclick = () => {
   if (!detailMap.size) return setStatus('先执行 ① + ③ 抓取岗位与详情');
   const { md, items, day } = buildDailyMD();
+  const html = buildDailyHTML(items, day);
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  chrome.tabs.create({ url: URL.createObjectURL(blob) }); // 新标签直接看网页表格
   downloadText(`boss-daily-${day}.md`, md, 'text/markdown');
   downloadText(`boss-daily-${day}.json`, JSON.stringify(items, null, 1), 'application/json');
-  setStatus(`已导出日报与数据（Downloads/boss-daily-${day}.*）`);
+  setStatus(`已打开网页表格，并下载 MD/JSON（Downloads/boss-daily-${day}.*）`);
   log(`已生成日报：岗位 ${items.length}，已打招呼 ${items.filter((x) => x.__status === '已打招呼').length}`);
 };
 
