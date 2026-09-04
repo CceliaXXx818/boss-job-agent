@@ -24,7 +24,15 @@ const waitEnter = () => new Promise((resolve) => rl.once('line', resolve));
 console.log('[boss:login] 启动浏览器（登录目录：data/private/boss-profile）...');
 const launchOpts = { headless: false };
 if (process.env.BOSS_CHROME === '1') launchOpts.channel = 'chrome'; // 用系统 Chrome（真实指纹）
-const browser = await chromium.launchPersistentContext(PROFILE, launchOpts);
+let browser;
+try {
+  browser = await chromium.launchPersistentContext(PROFILE, launchOpts);
+} catch (e) {
+  console.error(`[boss:login] 浏览器启动失败：${e?.message ?? e}`);
+  console.error('[boss:login] 提示：BOSS_CHROME=1 需要本机装有 Google Chrome；否则去掉该变量使用内置内核。15 秒后退出。');
+  await new Promise((r) => setTimeout(r, 15000));
+  process.exit(3);
+}
 try {
   const page = browser.pages()[0] ?? (await browser.newPage());
   // 只打开主页；之后不做任何自动跳转或读取，避免触发风控自动刷新。
@@ -36,6 +44,15 @@ try {
     await new Promise((r) => setTimeout(r, 15000));
     process.exit(3);
   }
+  await page.waitForTimeout(2500);
+  try {
+    const urlNow = page.url();
+    const bodyNow = await page.evaluate(() => document.body?.innerText?.slice(0, 300) ?? '');
+    if (urlNow === 'about:blank' || !bodyNow.trim()) {
+      console.error('[boss:login] 检测到页面被清空（about:blank/无内容）。这是 BOSS 对自动化浏览器的风控动作；');
+      console.error('[boss:login] 请换网络环境（如家庭宽带、关闭代理/VPN）后重试；我们不会绕过该检测。');
+    }
+  } catch { /* 忽略瞬时读取错误 */ }
   console.log('────────────────────────────────────────────');
   console.log('【请手动操作浏览器】');
   console.log(' 1) 若出现登录/二维码：用手机 BOSS App 扫码登录；');
