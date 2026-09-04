@@ -94,6 +94,53 @@ function clickGreet(labels) {
 
 const sleepInPage = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const GREET_LABELS_ALL = ['打招呼', '立即沟通', '和TA聊聊', '开聊', '开始沟通', '打个招呼', '马上沟通', '立即开聊', '聊一聊', '投个简历', '发消息'];
+
+function getEditor() {
+  return Array.from(document.querySelectorAll('textarea, [contenteditable="true"]')).find((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 40 && rect.height > 20;
+  }) ?? null;
+}
+
+function visibleLeafTexts() {
+  const out = [];
+  const seen = new Set();
+  for (const el of document.querySelectorAll('button,a,span,div,i,em')) {
+    if (el.children.length !== 0) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) continue;
+    const t = (el.textContent ?? '').trim();
+    if (t && t.length <= 14 && !seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+      if (out.length >= 40) break;
+    }
+  }
+  return out;
+}
+
+// 尝试找到并点击“进入聊天”入口（多个文案变体，逐个试）
+async function clickEntrance() {
+  const editorBefore = getEditor();
+  if (editorBefore) return { clicked: true, opened: true };
+  for (const label of GREET_LABELS_ALL) {
+    const cand = Array.from(document.querySelectorAll('button,a,span,div')).find((el) => {
+      if (el.children.length !== 0) return false;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return false;
+      const t = (el.textContent ?? '').trim();
+      return t === label || t.startsWith(label);
+    });
+    if (cand) {
+      cand.click();
+      await sleepInPage(1800);
+      if (getEditor()) return { clicked: true, opened: true, via: label };
+    }
+  }
+  return { clicked: false, opened: false };
+}
+
 function visibleTextCandidates(root) {
   return Array.from(root.querySelectorAll('button, a, span, div[role="button"]')).filter((el) => {
     const rect = el.getBoundingClientRect();
@@ -101,19 +148,11 @@ function visibleTextCandidates(root) {
   });
 }
 
-// 打招呼完整动作：点"打招呼/立即沟通" → 若给了话术则填入输入框 → 点发送/回车
+// 打招呼完整动作：进入聊天 → 若给了话术则填入输入框 → 点发送/回车
 async function greetFull(labels, text) {
-  const first = clickGreet(labels);
-  const alreadyChat = !first.clicked; // 未找到打招呼按钮：可能已在聊天界面，仍尝试发送
-  if (!alreadyChat) await sleepInPage(2200);
-  else await sleepInPage(800);
-  // 发送按钮（排除“发送简历/附件/照片”等）
-  const SEND_EXCLUDE = /简历|附件|照片|图片|文件/;
-  // 输入框
-  const editor = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]')).find((el) => {
-    const rect = el.getBoundingClientRect();
-    return rect.width > 40 && rect.height > 20;
-  });
+  const entrance = await clickEntrance();
+  await sleepInPage(1600);
+  const editor = getEditor();
 
   // 填充话术：用浏览器原生插入文本（触发真实 input 事件，BOSS 编辑器才能启用发送）
   async function setEditorText(el, value) {
@@ -247,10 +286,16 @@ async function greetFull(labels, text) {
     };
   }
 
+  const topTexts = visibleLeafTexts();
+  const detailTail = () =>
+    debugText() + ' || 页面可见文字：' + (topTexts.join(' | ') || '无');
   return {
     ok: false,
-    stage: alreadyChat ? 'chat_no_send' : 'need_manual',
-    detail: (alreadyChat ? '已在聊天界面但未找到可发送的输入/按钮。现场按钮：' : '未找到可点发送按钮。现场按钮：') + debugText(),
+    stage: entrance.opened ? 'chat_no_send' : 'no_chat_entrance',
+    detail:
+      (entrance.opened
+        ? '已进入聊天但未找到可发送的输入/按钮。现场按钮：'
+        : '未找到“进入聊天”入口，也未发现输入框。现场按钮：') + detailTail(),
   };
 }
 
