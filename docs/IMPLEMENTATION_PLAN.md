@@ -152,6 +152,7 @@ npm run dev:harness --workspace @job-agent/dsh-integration   # 若需要起 Harn
 - 运行与结果：`npm run ci` 全绿 = typecheck + verify:pinned + **16 文件 99 用例 0 failure**。
 - ⑥ **真模型接入（路径 A，2026-09-04）**：新增 `packages/model-client`——DeepSeek Chat 结构化 JSON 客户端（`chatJson`+Zod 校验+失败重试）、VCR 录制/回放（`fixtures/vcr/*.json`，离线 CI 可复现）、证据提取器（模型读 JD+画像 → 六维 0–100+证据+风险，程序算分不变）、混合意图判定（规则优先，未命中走模型兜底）。
   实测（真 Key、RUN_MODEL_LIVE=1）：证据提取 1 次调用合规；43 条语料子集**完全一致 40/43**（纯规则未命中 19 条中模型精确命中 16 条；3 条"简单聊两句"被安全归为寒暄——预设应答可接受）；运行 `npm run test:model-live`。真机接入后继续扩疑难集重评。
+- ⑦ **A-2 收尾（2026-09-04）**：demo 支持真模型证据（`RUN_MODEL_LIVE=1`，VCR 可离线回放，证据来源计数打印）；新增 `fixtures/hr/hard-corpus.json`（18 条真实疑难 HR 句）真模型评测 **18/18**（规则 7 + 模型兜底 11）；43 条子集稳定 40/43；修正规则顺序（offer 评审优先于薪资）并重录。全量 CI 22 文件/114 用例绿（commit 83407d2）。
 - 顺延项（UX/真机相关，不阻塞本阶段验收）：needs_human/review 的 CLI 呈现（Q13）与 DB 按日备份 → P3/P4。
 
 **交付物**
