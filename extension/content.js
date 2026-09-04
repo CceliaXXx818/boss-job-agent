@@ -129,39 +129,74 @@ async function greetFull(labels, text) {
     await sleepInPage(600);
   }
 
-  // 发送按钮识别：文字“发送”或 aria/title/class 含 send（图标按钮）
+  // 聊天区域：输入框就近的 chat/dialog/panel/editor 容器
+  const chatArea =
+    (editor &&
+      (editor.closest('[class*="chat"],[class*="dialog"],[class*="panel"],[class*="editor"],[class*="talk"]') ??
+        editor.parentElement?.parentElement)) ||
+    document;
+  const chatControls = () => Array.from(chatArea.querySelectorAll('button,a,span,i,em,div,svg,img'));
+  // 控件快照：任何可见、带 class/text/aria 的元素（图标按钮也能看到）
+  const snapshot = () =>
+    chatControls()
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
+      })
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        const t = (el.textContent ?? '').trim().slice(0, 12);
+        return {
+          tag: el.tagName.toLowerCase(),
+          cls: String(el.className ?? '').slice(0, 36),
+          text: t,
+          aria: (el.getAttribute('aria-label') ?? '').slice(0, 12),
+          xy: `${Math.round(r.x)},${Math.round(r.y)}`,
+          wh: `${Math.round(r.width)}x${Math.round(r.height)}`,
+        };
+      })
+      .filter((c) => c.text || c.cls || c.aria)
+      .slice(-18);
+  const debugText = () => {
+    const list = snapshot();
+    return list.length ? JSON.stringify(list) : '（聊天区域内未捕获到任何可见控件）';
+  };
+
+  // 发送按钮：文字/aria/class 命中；兜底“输入框底部右端最近的小控件”
   const isSendLike = (el) => {
     const t = (el.textContent ?? '').trim();
-    if (t && t.length <= 10 && /发送/.test(t) && !/简历|附件|照片|图片|文件/.test(t)) return true;
+    if (t && t.length <= 10 && /发\s*送/.test(t) && !/简历|附件|照片|图片|文件/.test(t)) return true;
     const aria = (el.getAttribute('aria-label') ?? '') + (el.getAttribute('title') ?? '');
-    if (/发送|send/i.test(aria) && t.length <= 20) return true;
-    if (/send/i.test(el.className ?? '') && t.length <= 20) return true;
+    if (/发送|send/i.test(aria)) return true;
+    if (/send|发送/.test(el.className ?? '')) return true;
     return false;
   };
-  const pickSendButton = () => visibleTextCandidates(document).find(isSendLike);
+  const bottomRight = () => {
+    if (!editor) return null;
+    const er = editor.getBoundingClientRect();
+    return chatControls()
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && r.right >= er.right - 6 && r.top >= er.top - 100 && r.bottom <= er.bottom + 70;
+      })
+      .sort((a, b) => {
+        const ra = a.getBoundingClientRect();
+        const rb = b.getBoundingClientRect();
+        return ra.width * ra.height - rb.width * rb.height;
+      })[0] ?? null;
+  };
   const isEnabled = (el) => {
+    if (!el) return false;
     if (el.disabled) return false;
     if (el.getAttribute('aria-disabled') === 'true') return false;
     if ((el.className || '').includes('disabled')) return false;
     return true;
   };
   const editorText = () => (editor?.value ?? editor?.textContent ?? '').trim();
-  const debugButtons = () => {
-    const around = editor?.closest('[class*="chat"],[class*="dialog"],[class*="panel"]') ?? document;
-    const list = visibleTextCandidates(around)
-      .map((el) => {
-        const t = (el.textContent ?? '').trim().slice(0, 12);
-        return t ? `${t}[${el.className ? String(el.className).slice(0, 30) : ''}]${isEnabled(el) ? '' : '(禁用)'}` : null;
-      })
-      .filter(Boolean)
-      .slice(0, 12)
-      .join('; ');
-    return list || '（周围未找到可见按钮）';
-  };
 
   let sendBtnNow = null;
   for (let i = 0; i < 8; i++) {
-    sendBtnNow = pickSendButton();
+    sendBtnNow = chatControls().find(isSendLike) || bottomRight();
     if (sendBtnNow && isEnabled(sendBtnNow)) break;
     await sleepInPage(500);
   }
@@ -181,7 +216,7 @@ async function greetFull(labels, text) {
     return {
       ok: false,
       stage: 'send_clicked_but_not_cleared',
-      detail: '点了发送但内容未清空。现场按钮：' + debugButtons(),
+      detail: '点了发送但内容未清空。现场按钮：' + debugText(),
     };
   }
 
@@ -193,14 +228,14 @@ async function greetFull(labels, text) {
     return {
       ok: false,
       stage: 'editor_still_has_text',
-      detail: '回车后内容仍在。现场按钮：' + debugButtons(),
+      detail: '回车后内容仍在。现场按钮：' + debugText(),
     };
   }
 
   return {
     ok: false,
     stage: alreadyChat ? 'chat_no_send' : 'need_manual',
-    detail: (alreadyChat ? '已在聊天界面但未找到可发送的输入/按钮。现场按钮：' : '未找到可点发送按钮。现场按钮：') + debugButtons(),
+    detail: (alreadyChat ? '已在聊天界面但未找到可发送的输入/按钮。现场按钮：' : '未找到可点发送按钮。现场按钮：') + debugText(),
   };
 }
 
