@@ -104,8 +104,9 @@ function visibleTextCandidates(root) {
 // 打招呼完整动作：点"打招呼/立即沟通" → 若给了话术则填入输入框 → 点发送/回车
 async function greetFull(labels, text) {
   const first = clickGreet(labels);
-  if (!first.clicked) return { ok: false, stage: 'no_greet_button', detail: first.text };
-  await sleepInPage(2200);
+  const alreadyChat = !first.clicked; // 未找到打招呼按钮：可能已在聊天界面，仍尝试发送
+  if (!alreadyChat) await sleepInPage(2200);
+  else await sleepInPage(800);
   // 发送按钮（排除“发送简历/附件/照片”等）
   const SEND_EXCLUDE = /简历|附件|照片|图片|文件/;
   // 输入框
@@ -196,7 +197,11 @@ async function greetFull(labels, text) {
     };
   }
 
-  return { ok: false, stage: 'need_manual', detail: '未找到可点发送按钮。现场按钮：' + debugButtons() };
+  return {
+    ok: false,
+    stage: alreadyChat ? 'chat_no_send' : 'need_manual',
+    detail: (alreadyChat ? '已在聊天界面但未找到可发送的输入/按钮。现场按钮：' : '未找到可点发送按钮。现场按钮：') + debugButtons(),
+  };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
