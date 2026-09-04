@@ -234,7 +234,16 @@ $('detail').onclick = async () => {
       await sleep(4200);
       try {
         const r = await sendTab(tab.id, { type: 'detailScrape' });
-        detailMap.set(row.jobId, { ...row, ...(r ?? {}) });
+        const merged = { ...row, ...(r ?? {}) };
+        // 详情缺经验/学历时，从列表 tags 回填（如 5-10年|硕士）
+        if (!merged.expEdu || merged.expEdu.length === 0) {
+          const fromTags = String(row.tags || '')
+            .split('|')
+            .map((s) => s.trim())
+            .filter((t) => /经验不限|\d+年|本科|硕士|大专|博士|应届/.test(t));
+          if (fromTags.length) merged.expEdu = fromTags.slice(0, 4);
+        }
+        detailMap.set(row.jobId, merged);
         log(`  ✓ ${r?.name || row.title}（薪资解析：${r?.asciiSalary || '未取到'}）`);
       } catch (e) {
         log('  ✗ 详情读取失败：' + (e?.message ?? e));
