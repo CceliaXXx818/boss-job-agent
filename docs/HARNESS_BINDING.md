@@ -57,3 +57,4 @@ npm i -D -E @deepseek-ai/dsh-scope @deepseek-ai/dsh-timeout ...（共 17 个 pee
 |---|---|
 | 2026-09-04 | 初版（offline 部分核验，U1–U5 待办） |
 | 2026-09-04 | 实测更新：dsh 安装并 CLI 可运行；**U1/U2 已核验**（官方包 README/类型）；U3–U5 形态已核验、LLM 烟测待真机；spike 落地 |
+| 2026-09-04 | **headless 冒烟通过**：配置 DEEPSEEK_API_KEY 后 `dsh --profile headless "1+1?"` 正常返回（用户真机与沙箱均验证）。前置修复：peer 版本错线（0.0.1-rc.x）→ 全部对齐 `0.1.1-rc.2`（commit 339005a）。U3b–U7 剩余 = 自定义 profile 内注册我方 19 工具并真会话烟测 |
