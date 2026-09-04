@@ -108,10 +108,6 @@ async function greetFull(labels, text) {
   await sleepInPage(2200);
   // 发送按钮（排除“发送简历/附件/照片”等）
   const SEND_EXCLUDE = /简历|附件|照片|图片|文件/;
-  const sendBtn = visibleTextCandidates(document).find((el) => {
-    const t = (el.textContent ?? '').trim();
-    return /发送/.test(t) && t.length <= 10 && !SEND_EXCLUDE.test(t);
-  });
   // 输入框
   const editor = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]')).find((el) => {
     const rect = el.getBoundingClientRect();
@@ -132,27 +128,49 @@ async function greetFull(labels, text) {
     await sleepInPage(600);
   }
 
-  if (sendBtn) {
-    sendBtn.click();
-    await sleepInPage(800);
-    return {
-      ok: true,
-      stage: 'sent',
-      detail: text ? '已填入自定义话术并点击“发送”' : `点击了“打招呼”(${first.text})并点击“发送”（平台默认话术）`,
-    };
+  // 等发送按钮变为可点（最长约 4 秒）
+  const isEnabled = (el) => {
+    if (el.disabled) return false;
+    if (el.getAttribute('aria-disabled') === 'true') return false;
+    if ((el.className || '').includes('disabled')) return false;
+    return true;
+  };
+  let sendBtnNow = null;
+  for (let i = 0; i < 8; i++) {
+    sendBtnNow = visibleTextCandidates(document).find((el) => {
+      const t = (el.textContent ?? '').trim();
+      return /发送/.test(t) && t.length <= 10 && !SEND_EXCLUDE.test(t);
+    });
+    if (sendBtnNow && isEnabled(sendBtnNow)) break;
+    await sleepInPage(500);
   }
-  if (editor) {
-    const current = (editor.value ?? editor.textContent ?? '').trim();
-    if (current.length > 0) {
+  const editorText = () => (editor?.value ?? editor?.textContent ?? '').trim();
+
+  if (sendBtnNow && isEnabled(sendBtnNow)) {
+    sendBtnNow.click();
+    await sleepInPage(1200);
+    if (editor && editorText().length === 0) {
+      return { ok: true, stage: 'sent', detail: text ? '已填入自定义话术并成功发送' : '已发送（平台默认话术）' };
+    }
+    // 点击后内容没清空：补一次回车兜底
+    if (editor) {
       editor.focus();
       editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
-      editor.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
-      await sleepInPage(800);
-      return { ok: true, stage: 'sent_by_enter', detail: '已通过回车发送' };
+      await sleepInPage(1200);
+      if (editorText().length === 0) return { ok: true, stage: 'sent_by_enter', detail: '点击发送后经回车兜底发送成功' };
     }
-    return { ok: false, stage: 'editor_empty', detail: '进入了打招呼界面但发送区为空，未发送（请人工检查）' };
+    return { ok: false, stage: 'send_clicked_but_not_cleared', detail: '点了发送但输入框内容仍在，停在此界面（请人工确认）' };
   }
-  return { ok: false, stage: 'need_manual', detail: '已点打招呼但未找到发送按钮，停在此界面（请人工确认）' };
+
+  if (editor && editorText().length > 0) {
+    editor.focus();
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+    await sleepInPage(1200);
+    if (editorText().length === 0) return { ok: true, stage: 'sent_by_enter', detail: '已通过回车发送' };
+    return { ok: false, stage: 'editor_still_has_text', detail: '回车后内容仍在，停在此界面（请人工确认）' };
+  }
+
+  return { ok: false, stage: 'need_manual', detail: '已点打招呼但未完成发送，停在此界面（请人工确认）' };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
