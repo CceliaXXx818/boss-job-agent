@@ -23,7 +23,8 @@
     "ci": "npm run typecheck && npm run verify:pinned && npm test",
     "agent:smoke": "node scripts/agent-smoke.mjs",
     "boss:wizard": "node scripts/boss-wizard.mjs",
-    "boss:login": "node scripts/boss-login.mjs"
+    "boss:login": "node scripts/boss-login.mjs",
+    "boss:cdp": "node scripts/boss-cdp.mjs"
   },
   "devDependencies": {
     "@deepseek-ai/cordis-plugin-group": "1.0.2",
