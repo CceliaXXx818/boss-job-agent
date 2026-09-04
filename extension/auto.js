@@ -128,7 +128,8 @@ async function greetOne(tabId, row) {
   const url = 'https://www.zhipin.com' + row.href;
   await chrome.tabs.update(tabId, { url });
   await sleep(4000);
-  const r = await sendTab(tabId, { type: 'greetFull', labels: GREET_LABELS });
+  const text = $('greetText').value.trim();
+  const r = await sendTab(tabId, { type: 'greetFull', labels: GREET_LABELS, text });
   return r ?? { ok: false, stage: 'content_no_response', detail: 'content 无响应' };
 }
 

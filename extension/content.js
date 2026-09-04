@@ -101,8 +101,8 @@ function visibleTextCandidates(root) {
   });
 }
 
-// 打招呼完整动作：点"打招呼/立即沟通" → 等待面板 → 若需再点"发送"则发送
-async function greetFull(labels) {
+// 打招呼完整动作：点"打招呼/立即沟通" → 若给了话术则填入输入框 → 点发送/回车
+async function greetFull(labels, text) {
   const first = clickGreet(labels);
   if (!first.clicked) return { ok: false, stage: 'no_greet_button', detail: first.text };
   await sleepInPage(2200);
@@ -112,26 +112,45 @@ async function greetFull(labels) {
     const t = (el.textContent ?? '').trim();
     return /发送/.test(t) && t.length <= 10 && !SEND_EXCLUDE.test(t);
   });
-  if (sendBtn) {
-    sendBtn.click();
-    await sleepInPage(800);
-    return { ok: true, stage: 'sent', detail: `点击了“打招呼”(${first.text})并点击“发送”` };
-  }
-  // 无独立发送按钮：尝试在输入框内回车（若有文本）
+  // 输入框
   const editor = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]')).find((el) => {
     const rect = el.getBoundingClientRect();
     return rect.width > 40 && rect.height > 20;
   });
+
+  if (editor && text && text.length > 0) {
+    // 填入我们的话术（兼容 React 受控组件）
+    if (editor.tagName === 'TEXTAREA') {
+      const proto = Object.getPrototypeOf(editor);
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      setter?.call(editor, text);
+    } else {
+      editor.textContent = text;
+    }
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    editor.dispatchEvent(new Event('change', { bubbles: true }));
+    await sleepInPage(600);
+  }
+
+  if (sendBtn) {
+    sendBtn.click();
+    await sleepInPage(800);
+    return {
+      ok: true,
+      stage: 'sent',
+      detail: text ? '已填入自定义话术并点击“发送”' : `点击了“打招呼”(${first.text})并点击“发送”（平台默认话术）`,
+    };
+  }
   if (editor) {
-    const text = editor.textContent ?? editor.value ?? '';
-    if (text.trim().length > 0) {
+    const current = (editor.value ?? editor.textContent ?? '').trim();
+    if (current.length > 0) {
       editor.focus();
       editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
       editor.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
       await sleepInPage(800);
-      return { ok: true, stage: 'sent_by_enter', detail: '在输入框内回车发送' };
+      return { ok: true, stage: 'sent_by_enter', detail: '已通过回车发送' };
     }
-    return { ok: false, stage: 'editor_empty', detail: '进入了打招呼界面但输入框为空，未发送（请人工检查）' };
+    return { ok: false, stage: 'editor_empty', detail: '进入了打招呼界面但发送区为空，未发送（请人工检查）' };
   }
   return { ok: false, stage: 'need_manual', detail: '已点打招呼但未找到发送按钮，停在此界面（请人工确认）' };
 }
@@ -143,7 +162,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   } else if (msg?.type === 'greet') {
     sendResponse({ ok: true, ...clickGreet(msg.labels ?? []) });
   } else if (msg?.type === 'greetFull') {
-    greetFull(msg.labels ?? []).then((r) => sendResponse({ ok: true, ...r }));
+    greetFull(msg.labels ?? [], msg.text ?? '').then((r) => sendResponse({ ok: true, ...r }));
     return true; // 异步响应
   } else if (msg?.type === 'diagnose') {
     sendResponse({ ok: true, ...diagnose() });
