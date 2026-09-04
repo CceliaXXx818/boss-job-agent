@@ -212,6 +212,7 @@ function renderDetailTable() {
         `<td>${escapeHtml(d.asciiSalary || '字体加密待解码')}</td>` +
         `<td>${escapeHtml((d.expEdu || []).join(' / '))}</td>` +
         `<td>${escapeHtml((d.companyMeta || []).join(' / '))}</td>` +
+        `<td>${d.__ai ? escapeHtml(`${d.__ai.score}分·${d.__ai.label}<br><small>${(d.__ai.matchedNote||'').slice(0,50)}</small>`) : '<span class=skip>-</span>'}</td>` +
         `<td>${escapeHtml((d.descFull || d.descPreview || '').slice(0, 500))}</td></tr>`,
     )
     .join('');
@@ -277,12 +278,12 @@ function buildDailyMD() {
   L.push(`- 已打招呼：${greeted}`);
   L.push(`- 需人工处理：${needManual}`);
   L.push('');
-  L.push('| # | 岗位 | 公司 | 城市·区域 | 薪资 | 经验/学历 | 公司规模/融资 | 状态 | JD 摘要 |');
-  L.push('|---|---|---|---|---|---|---|---|---|');
+  L.push('| # | 岗位 | 公司 | 城市·区域 | 薪资 | 经验/学历 | 规模/融资 | 模型分 | 状态 | JD 摘要 |');
+  L.push('|---|---|---|---|---|---|---|---|---|---|');
   items.forEach((d, i) => {
     const salary = d.asciiSalary || d.salaryRaw || '—';
     L.push(
-      `| ${i + 1} | ${d.title ?? d.name ?? ''} | ${d.company || ''} | ${d.area || ''} | ${salary} | ${(d.expEdu || []).join('/')} | ${(d.companyMeta || []).join('/') || '—'} | ${d.__status || '待处理'} | ${(d.descFull || '').slice(0, 180)} |`,
+      `| ${i + 1} | ${d.title ?? d.name ?? ''} | ${d.company || ''} | ${d.area || ''} | ${salary} | ${(d.expEdu || []).join('/')} | ${(d.companyMeta || []).join('/') || '—'} | ${d.__ai ? `${d.__ai.score}·${d.__ai.label}` : '—'} | ${d.__status || '待处理'} | ${(d.descFull || '').slice(0, 180)} |`,
     );
   });
   L.push('');
@@ -303,6 +304,45 @@ $('daily').onclick = () => {
   setStatus(`已导出日报与数据（Downloads/boss-daily-${day}.*）`);
   log(`已生成日报：岗位 ${items.length}，已打招呼 ${items.filter((x) => x.__status === '已打招呼').length}`);
 };
+
+async function scoreChecked() {
+  if (!detailMap.size) return setStatus('先执行 ① + ③ 抓取岗位与详情');
+  setStatus('正在调用本机模型打分（请确认已运行 npm run score:serve）…');
+  const jobs = [...detailMap.values()].map((d) => ({
+    jobId: d.jobId,
+    title: d.title || d.name || '',
+    company: d.company || '',
+    area: d.area || '',
+    salaryAscii: d.asciiSalary || '',
+    expEdu: d.expEdu || [],
+    companyMeta: d.companyMeta || [],
+    descFull: d.descFull || '',
+  }));
+  try {
+    const res = await fetch('http://127.0.0.1:8799/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobs }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    for (const r of data.results ?? []) {
+      const hit = detailMap.get(r.jobId);
+      if (!hit) continue;
+      if (r.ok) hit.__ai = r;
+      else hit.__ai = { ok: false, error: r.ruleBlocked || r.error };
+    }
+    renderDetailTable();
+    const tiers = {};
+    for (const d of detailMap.values()) if (d.__ai?.ok) tiers[d.__ai.tier] = (tiers[d.__ai.tier] ?? 0) + 1;
+    setStatus('打分完成：' + JSON.stringify(tiers));
+    log('智能打分完成 ' + JSON.stringify(tiers));
+  } catch (e) {
+    setStatus('打分失败（请先在本机运行 npm run score:serve）：' + (e?.message ?? e));
+    log('打分失败：' + (e?.message ?? e));
+  }
+}
+$('ai').onclick = scoreChecked;
 
 $('stop').onclick = () => {
   stopped = true;
