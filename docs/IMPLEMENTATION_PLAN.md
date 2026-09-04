@@ -150,7 +150,9 @@ npm run dev:harness --workspace @job-agent/dsh-integration   # 若需要起 Harn
 - ④ **确定性兜底**：`services/auto-actions.ts` AutoActionExecutor（规则分类注入、三重门执行；模型可漏、系统不漏）——明确索要→自动发简历仅 1 次（重复被状态机拦截）、薪资→escalate 冻结会话、预设应答文本来自配置。
 - ⑤ 保留期清理 `services/retention.ts`（JD/消息 180 天、审计 365 天；审计触发器摘除-删除-重装，append-only 语义恢复）+ 属性测试 `property.test.ts`（500 对随机迁移 canTransition≡assertTransition、FILTERED 无出边/FAILED 仅人工复位→QUEUED、幂等键确定性与灵敏度）。
 - 运行与结果：`npm run ci` 全绿 = typecheck + verify:pinned + **16 文件 99 用例 0 failure**。
-- 顺延项（UX/真机相关，不阻塞本阶段验收）：needs_human/review 的 CLI 呈现（Q13）与 DB 按日备份 → P3/P4；模型对"规则未命中疑难集"重评 → dsh 安装后。
+- ⑥ **真模型接入（路径 A，2026-09-04）**：新增 `packages/model-client`——DeepSeek Chat 结构化 JSON 客户端（`chatJson`+Zod 校验+失败重试）、VCR 录制/回放（`fixtures/vcr/*.json`，离线 CI 可复现）、证据提取器（模型读 JD+画像 → 六维 0–100+证据+风险，程序算分不变）、混合意图判定（规则优先，未命中走模型兜底）。
+  实测（真 Key、RUN_MODEL_LIVE=1）：证据提取 1 次调用合规；43 条语料子集**完全一致 40/43**（纯规则未命中 19 条中模型精确命中 16 条；3 条"简单聊两句"被安全归为寒暄——预设应答可接受）；运行 `npm run test:model-live`。真机接入后继续扩疑难集重评。
+- 顺延项（UX/真机相关，不阻塞本阶段验收）：needs_human/review 的 CLI 呈现（Q13）与 DB 按日备份 → P3/P4。
 
 **交付物**
 - 意图分类器迭代至 **≥95%**（golden corpus，含"口语/长句/多意图"样本）；分类方法 rule/model 比例统计（成本指标）。

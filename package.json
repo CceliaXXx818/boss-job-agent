@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:intent-eval": "vitest run packages/conversation-policy/src/intent-eval.test.ts",
     "test:soak": "vitest run packages/agent-core/src/e2e/soak.test.ts",
+    "test:model-live": "RUN_MODEL_LIVE=1 vitest run packages/model-client/src/model-live.test.ts",
     "demo:day": "vitest run packages/agent-core/src/e2e/demo.test.ts",
     "scan:redline": "node scripts/redline-scan.mjs",
     "verify:pinned": "node scripts/verify-pinned.mjs",

@@ -1,0 +1,217 @@
+{
+ "2d14cef468052bfc13b2745e": {
+  "intent": "request_resume",
+  "method": "rule",
+  "confidence": 1
+ },
+ "c1156d148a1454934df8ce1a": {
+  "intent": "request_resume",
+  "method": "rule",
+  "confidence": 1
+ },
+ "d204ed68a987b2d759da6614": {
+  "intent": "request_online_submit",
+  "method": "rule",
+  "confidence": 1
+ },
+ "bfb75dbe6fcd1f5d198f23fe": {
+  "intent": "request_online_submit",
+  "method": "rule",
+  "confidence": 1
+ },
+ "7f1df790bdbc32ad2aa8d6ed": {
+  "intent": "availability_check",
+  "method": "rule",
+  "confidence": 1
+ },
+ "2a89f914b975c9e6056271a2": {
+  "intent": "availability_check",
+  "method": "rule",
+  "confidence": 1
+ },
+ "5479138cd0c396e048291e1d": {
+  "intent": "start_date_question",
+  "method": "rule",
+  "confidence": 1
+ },
+ "c78b149bfb1def462926aacc": {
+  "intent": "start_date_question",
+  "method": "rule",
+  "confidence": 1
+ },
+ "07c02975b82c1a0d7ed0fea0": {
+  "intent": "location_confirm",
+  "method": "rule",
+  "confidence": 1
+ },
+ "d78df9af81d8a48183f8545e": {
+  "intent": "location_confirm",
+  "method": "rule",
+  "confidence": 1
+ },
+ "5e3c793280b9fd92412f8c9c": {
+  "intent": "salary_discussion",
+  "method": "rule",
+  "confidence": 1
+ },
+ "89096fa8c05da26d29af1637": {
+  "intent": "salary_discussion",
+  "method": "rule",
+  "confidence": 1
+ },
+ "5f885774fa323df581a8cd0d": {
+  "intent": "reason_for_leaving",
+  "method": "rule",
+  "confidence": 1
+ },
+ "e7f41ec8e9f0e43c331aa18f": {
+  "intent": "reason_for_leaving",
+  "method": "rule",
+  "confidence": 1
+ },
+ "20d6a071b9342614aa60ebb8": {
+  "intent": "interview_invitation",
+  "method": "rule",
+  "confidence": 1
+ },
+ "0fac3af266634c04e66e6c27": {
+  "intent": "interview_invitation",
+  "method": "rule",
+  "confidence": 1
+ },
+ "b047542b0b0dbcd39c6e7595": {
+  "intent": "relocation_request",
+  "method": "rule",
+  "confidence": 1
+ },
+ "106d2745423e9d45588ea917": {
+  "intent": "relocation_request",
+  "method": "rule",
+  "confidence": 1
+ },
+ "1f1b209dc6f75636071e206c": {
+  "intent": "sensitive_data_request",
+  "method": "rule",
+  "confidence": 1
+ },
+ "e600c414d897e11db386a2f4": {
+  "intent": "sensitive_data_request",
+  "method": "rule",
+  "confidence": 1
+ },
+ "9e8e55dbf46a6ba3b7609baf": {
+  "intent": "offer_background_check",
+  "method": "rule",
+  "confidence": 1
+ },
+ "b140874d28a7cc52bc9745e2": {
+  "intent": "offer_background_check",
+  "method": "rule",
+  "confidence": 1
+ },
+ "762557f6d9c43705b19dc7b1": {
+  "intent": "greeting_smalltalk",
+  "method": "rule",
+  "confidence": 1
+ },
+ "c189bfeb11247c6c3e002eec": {
+  "intent": "greeting_smalltalk",
+  "method": "rule",
+  "confidence": 1
+ },
+ "98e4449ffc45fce59a01f1eb": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "f6d3839e1e7b00aafb9dc265": {
+  "intent": "greeting_smalltalk",
+  "method": "model",
+  "confidence": 0.7
+ },
+ "2afe9ff339f433107ea86289": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.85
+ },
+ "e1f2a9b68cd307cee1760d55": {
+  "intent": "greeting_smalltalk",
+  "method": "model",
+  "confidence": 0.85
+ },
+ "55eee61e10179e97884dde52": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.6
+ },
+ "61147e3cf7bcf805d55a6703": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "603aa58ee24bef6cbc4a4178": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.6
+ },
+ "6835a0cfeb8f30c113d6a9dd": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.7
+ },
+ "304b5244c8406d80ea83610b": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "52f82418c26b48b883db5fda": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "a47c01e970b0075d959c1d97": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "22fa758d2b83cf050918e4c7": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "c174a57a7053dcdee0f858c0": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.85
+ },
+ "4850c443720fc2e7eb6b7f46": {
+  "intent": "greeting_smalltalk",
+  "method": "model",
+  "confidence": 0.9
+ },
+ "e342bd1911a3828963c4c79b": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.6
+ },
+ "449928b97b365cd4922d9f6c": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.85
+ },
+ "abf817bfdae55b38c6c3a6f2": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.8
+ },
+ "5f28bbd55c371dba3c1a4165": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.7
+ },
+ "251bdb14e7db7f697364ea46": {
+  "intent": "unknown",
+  "method": "model",
+  "confidence": 0.85
+ }
+}

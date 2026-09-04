@@ -1,0 +1,20 @@
+{
+  "name": "@job-agent/model-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@job-agent/conversation-policy": "*",
+    "@job-agent/domain": "*",
+    "@job-agent/job-matcher": "*",
+    "zod": "4.5.4"
+  }
+}

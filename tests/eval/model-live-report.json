@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-09-04T12:45:00.188Z",
+  "sampleSize": 43,
+  "exactMatch": 40,
+  "modelFallbackUsed": 19,
+  "nonOk": [
+    {
+      "text": "我这边了解一下你的情况",
+      "expected": "unknown",
+      "got": "greeting_smalltalk"
+    },
+    {
+      "text": "想确认下，我们简单聊两句吗？",
+      "expected": "unknown",
+      "got": "greeting_smalltalk"
+    },
+    {
+      "text": "哈喽，我们简单聊两句谢谢",
+      "expected": "unknown",
+      "got": "greeting_smalltalk"
+    }
+  ]
+}

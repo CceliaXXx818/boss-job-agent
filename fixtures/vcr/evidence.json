@@ -1,0 +1,38 @@
+{
+ "evidence-MOCK-0001": {
+  "dimScores": {
+   "direction": 90,
+   "ai_core": 95,
+   "project": 90,
+   "pm": 80,
+   "industry": 70,
+   "city_mode": 50
+  },
+  "matchedEvidence": [
+   {
+    "requirement": "负责LLM+RAG智能客服产品",
+    "resume_evidence": "有LLM与RAG智能客服项目经验",
+    "status": "matched"
+   },
+   {
+    "requirement": "推动大模型能力落地",
+    "resume_evidence": "有AI智能语音外呼、智能对话数字人等落地项目",
+    "status": "matched"
+   },
+   {
+    "requirement": "与算法团队协作",
+    "resume_evidence": "画像中未明确提及与算法团队协作的具体经历",
+    "status": "partial"
+   },
+   {
+    "requirement": "工作地点深圳",
+    "resume_evidence": "画像中未提及城市偏好或当前所在地",
+    "status": "missing"
+   }
+  ],
+  "risks": [
+   "候选人画像未明确说明是否接受深圳工作地点，存在地域匹配风险",
+   "画像中未提供与算法团队协作的具体案例，可能影响跨团队协作能力评估"
+  ]
+ }
+}

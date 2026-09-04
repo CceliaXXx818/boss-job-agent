@@ -36,6 +36,7 @@ packages/
   job-matcher                         # 硬过滤 + 权重评分 + 分桶
   conversation-policy                 # HR 意图规则分类 + 策略桶
   platform-mock                      # Mock 平台（P0–P2 唯一启用）
+  model-client                        # DeepSeek 真模型：证据提取/意图判定(JSON+Zod+VCR)
   browser-runtime                     # 确定性浏览器动词 + 页面对象 + InMemoryDriver
   platform-boss                       # BOSS 适配器（默认禁运 fail-closed）
   daily-reporter | dsh-integration    # 日报渲染 · Harness 工具清单（注册待 U1–U5）
