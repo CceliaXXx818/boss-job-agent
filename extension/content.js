@@ -1,15 +1,7 @@
 // BOSS 岗位助手 · content script（只读，纯 JS）
-// 仅读取当前页面 DOM；不模拟点击、不提交表单、不改动页面。
-
-// 常见岗位卡片容器选择器（多版本兼容，逐一尝试）
-const CARD_SELECTORS = [
-  '.search-job-result .job-card-wrapper',
-  '.job-list-box .job-card-wrapper',
-  'li.job-card-wrapper',
-  '[class*="job-card-wrapper"]',
-  '.job-card',
-  'li[class*="job-card"]',
-];
+// 结构已按真实页面校准（2026）：li.job-card-box > a.job-name / span.job-salary /
+// ul.tag-list li / span.boss-name / span.company-location
+// 仅读取 DOM；不点击、不提交、不改页面。
 
 function pick(fn, fallback) {
   try {
@@ -23,8 +15,22 @@ function textOf(el) {
   return el?.textContent ? el.textContent.replace(/\s+/g, ' ').trim() : '';
 }
 
+function findContainer(a) {
+  const sels = ['.job-card-box', '.job-card-wrapper', 'li[class*="job-card"]', '.job-card'];
+  for (const sel of sels) {
+    const c = a.closest(sel);
+    if (c) return c;
+  }
+  let node = a;
+  for (let i = 0; i < 4; i++) {
+    node = node.parentElement;
+    if (node && node.textContent && node.textContent.length < 400) return node;
+  }
+  return a;
+}
+
 function cardRows() {
-  const anchors = Array.from(document.querySelectorAll('a[href*="/job_detail/"]')).slice(0, 60);
+  const anchors = Array.from(document.querySelectorAll('a.job-name, a[href*="/job_detail/"]')).slice(0, 60);
   const rows = [];
   const seen = new Set();
   for (const a of anchors) {
@@ -33,29 +39,12 @@ function cardRows() {
     const jobId = m ? m[1] : href;
     if (seen.has(jobId)) continue;
     seen.add(jobId);
-    // 容器：优先已知卡片类，其次回退父链
-    let container = null;
-    for (const sel of CARD_SELECTORS) {
-      container = a.closest(sel);
-      if (container) break;
-    }
-    let node = container ?? a;
-    for (let i = 0; i < 4 && node && !container; i++) {
-      node = node.parentElement;
-      if (!container && node && node.textContent && node.textContent.length < 400) container = node;
-    }
-    const box = container ?? a;
-    const title = pick(
-      () =>
-        textOf(box.querySelector('[class*="job-name"],[class*="job-title"],.job-name,.job-title')) ||
-        (box.innerText ?? '').split('\n').map((s) => s.trim()).filter(Boolean)[0] ||
-        '',
-      '',
-    );
-    const salary = textOf(box.querySelector('.salary,[class*="salary"]'));
-    const company = textOf(box.querySelector('[class*="company-name"],.company-name,[class*="brand-name"]'));
-    const area = textOf(box.querySelector('[class*="job-area"],.job-area,[class*="location"]'));
-    const lines = (box.innerText ?? '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 12);
+    const box = findContainer(a);
+    const title = textOf(box.querySelector('.job-name') ?? a);
+    const salary = textOf(box.querySelector('.job-salary'));
+    const tags = Array.from(box.querySelectorAll('.tag-list li')).map((li) => textOf(li)).filter(Boolean);
+    const company = textOf(box.querySelector('.boss-name'));
+    const area = textOf(box.querySelector('.company-location'));
     rows.push({
       title,
       salary,
@@ -63,31 +52,25 @@ function cardRows() {
       area,
       jobId,
       href: href.split('?')[0] ?? href,
-      lines: lines.join(' | '),
+      tags: tags.join('|'),
     });
   }
   return rows;
 }
 
 function diagnose() {
-  const anchors = Array.from(document.querySelectorAll('a[href*="/job_detail/"]')).slice(0, 2);
+  const a = document.querySelector('a.job-name, a[href*="/job_detail/"]');
   let sampleHtml = '';
   const sampleClasses = [];
-  for (const a of anchors) {
-    let box = null;
-    for (const sel of CARD_SELECTORS) {
-      box = a.closest(sel);
-      if (box) break;
-    }
-    const target = box ?? a;
-    sampleHtml = target.outerHTML.slice(0, 1800);
-    let n = target;
+  if (a) {
+    const box = findContainer(a);
+    sampleHtml = box.outerHTML.slice(0, 2000);
+    let n = box;
     for (let i = 0; i < 4 && n; i++) {
       const c = n.getAttribute?.('class');
       if (c) sampleClasses.push(c.slice(0, 160));
       n = n.parentElement;
     }
-    break;
   }
   return { url: location.href, sampleHtml, sampleClasses };
 }

@@ -49,7 +49,7 @@ function escapeHtml(s) {
 }
 
 function toCSV(rows) {
-  const keys = ['title', 'salary', 'company', 'area', 'jobId', 'href', 'lines'];
+  const keys = ['title', 'salary', 'company', 'area', 'jobId', 'href', 'tags'];
   const esc = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
   return [keys.join(','), ...rows.map((r) => keys.map((k) => esc(r[k])).join(','))].join('\n');
 }
