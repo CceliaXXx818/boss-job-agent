@@ -1,0 +1,7 @@
+# job-agent 自定义插件补丁层（路径 B 实证）
+# 用法：dsh --profile headless --patch profiles/job-agent.patch.yml "<任务>"
+# 在 dsh-headless bundle 之后插入我们的插件行；name 从仓库根 node_modules 解析
+#（packages/harness-profile 经 npm workspaces 链接）。
+- insert:
+    - id: job-agent-tools
+      name: '@job-agent/harness-profile'

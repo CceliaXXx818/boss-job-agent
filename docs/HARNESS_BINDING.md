@@ -43,7 +43,8 @@ npm i -D -E @deepseek-ai/dsh-scope @deepseek-ai/dsh-timeout ...（共 17 个 pee
 | U3b | 我方 profile（bundle/patch）打包方式与 agent preset 文件挂载 | 配置 DEEPSEEK_API_KEY 后 `dsh --profile headless …` 烟测；对照 dump 输出调整 patch 层 |
 | U4b | 凭据注入到哪一档（env vs credentials 文件 vs settings） | 同上烟测 |
 | U6 | `schedule_create` 在真实 agent 会话中的持久化与 follow-up 行为 | 同上烟测（可先造 60s 后提醒） |
-| U7 | 全量 19 工具注册（spike 已证单工具）在真会话可见性 | 用 tools.schemas()/dump 复核 |
+| U3b | 自定义插件挂载方式 | ✅ 已实证：`--patch <yaml>` 插入 `- insert: [{id, name}]` 行即可把自定义包加入 headless profile（2026-09-04，job_agent_echo） |
+| U7 | 工具在真会话的可见性 | ✅ 单工具实证：模型真实调用 job_agent_echo 并回传结果（`npm run agent:smoke`） |
 
 ## 5. 风险与缓解
 
@@ -58,3 +59,4 @@ npm i -D -E @deepseek-ai/dsh-scope @deepseek-ai/dsh-timeout ...（共 17 个 pee
 | 2026-09-04 | 初版（offline 部分核验，U1–U5 待办） |
 | 2026-09-04 | 实测更新：dsh 安装并 CLI 可运行；**U1/U2 已核验**（官方包 README/类型）；U3–U5 形态已核验、LLM 烟测待真机；spike 落地 |
 | 2026-09-04 | **headless 冒烟通过**：配置 DEEPSEEK_API_KEY 后 `dsh --profile headless "1+1?"` 正常返回（用户真机与沙箱均验证）。前置修复：peer 版本错线（0.0.1-rc.x）→ 全部对齐 `0.1.1-rc.2`（commit 339005a）。U3b–U7 剩余 = 自定义 profile 内注册我方 19 工具并真会话烟测 |
+| 2026-09-04 | **路径 B 最小闭环**：新增 `packages/harness-profile`（cordis 插件，`inject:['tools']`）+ `profiles/job-agent.patch.yml`（`insert` 行）→ headless 会话中**模型真实调用自注册工具 job_agent_echo** 并回传（`npm run agent:smoke`）。关键坑记录：① ctx 服务须在 inject 声明；② 工具 parameters 须为完整 JSON Schema 根对象；③ DSH_HOME 需无条件指向本地目录避免触碰 ~/.dsh；④ 插件包从仓库根 node_modules 解析。剩余 = B2：19 工具业务映射 + 模型驱动 E2E + schedule 定时（需把 agent-core TS 以可加载形态暴露） |

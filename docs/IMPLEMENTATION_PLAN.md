@@ -205,6 +205,12 @@ npm run start -- --platform=boss                # 预期输出: "Boss adapter di
 - 运行与结果：`npm run ci` 全绿 = **18 文件 105 用例 0 failure**。
 - 与计划差异（环境所致，记录如下）：真实 Playwright 浏览器二进制需 CDN 下载（沙箱不可达）⇒ `PlaywrightDriver` 绑定与"本地 HTML 真浏览器驱动"顺延到具备网络的真机（P4 前置步骤：`npm i -D playwright` + `npx playwright install chromium` 后，用同一动词引擎对 fixtures/web 跑 L4）；BOSS 页面选择器与真实 DOM 的校准也只在 P4 用户授权后由用户配合进行。契约可移植性（mock/boss 同一套测试）在 boss 启用并绑定驱动后补全。
 
+**路径 B 记录（2026-09-04，最小闭环）**
+- `packages/harness-profile`（纯 JS cordis 插件，inject tools）+ `profiles/job-agent.patch.yml` + `npm run agent:smoke`：headless 会话中模型真实调用自注册工具并回传（B-min-OK）。
+- 经验：patch 语法 `- insert:`；inject 声明；parameters 完整 JSON Schema；DSH_HOME hermetic；插件自根 node_modules 解析（详见 HARNESS_BINDING U3b/U7）。
+- B2 待办（较大，需先定加载形态）：agent-core TS 业务以可加载产物暴露（新增构建或 node:sqlite 内联 JS 层）→ 19 工具注册 → 模型驱动 E2E（虚拟工作日）→ schedule 定时唤醒。
+
+---
 ---
 
 ### P4 真实平台接入（默认关，需你决策 Q12）

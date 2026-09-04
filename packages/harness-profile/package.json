@@ -1,0 +1,10 @@
+{
+  "name": "@job-agent/harness-profile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./plugin.js",
+  "exports": {
+    ".": "./plugin.js"
+  }
+}

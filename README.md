@@ -17,6 +17,7 @@ npm run demo:day            # 1 个虚拟工作日一键演示（Mock，无网�
 npm run test:intent-eval    # HR 意图评测（270 条语料 ≥95% 门槛）
 npm run test:soak           # 5 虚拟工作日 soak（0 重复 / 0 状态丢失）
 npm run scan:redline        # Git 红线扫描（手机号/邮箱/API Key/私钥）
+npm run agent:smoke       # 模型真实调用自注册工具（需 DEEPSEEK_API_KEY，验证 Harness 闭环）
 ```
 
 首次使用请复制示例配置并按需修改（真实姓名/语气请本地处理）：
