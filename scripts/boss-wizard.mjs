@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
  * boss:wizard —— 真实 BOSS 只读校准向导（范围 A，不含任何外发动作）。
- * 流程：打开 BOSS 求职搜索页 → 你在弹出的浏览器窗口扫码登录 → 脚本自动检测登录态
- *       → 导出前 N 条岗位卡片的页面结构到 data/private/boss-dump-<ts>.json（git 忽略）。
- * 前置：node_modules 已含 playwright；浏览器内核请先执行 npx playwright install chromium。
- * 纪律：本脚本只读；不点击打招呼/发简历，不提交任何表单（搜索用 URL 参数完成）。
+ * 交互式：打开浏览器 → 你扫码/确认登录 → 回到终端按【回车】→ 导出岗位卡片结构。
+ * 纪律：只读；搜索用 URL 参数；不出错静默退出（出错停留 15s 并打印说明）。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -25,26 +24,59 @@ const query = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 'AI产�
 const city = process.argv.includes('--hangzhou') ? 101210100 : 101280600; // 深圳 101280600 / 杭州 101210100
 const searchUrl = `https://www.zhipin.com/web/geek/jobs?query=${encodeURIComponent(query)}&city=${city}`;
 
-const browser = await chromium.launchPersistentContext(PROFILE, { headless: false, viewport: { width: 1360, height: 900 } });
+const rl = createInterface({ input: process.stdin, output: process.stdout });
+const waitEnter = () => new Promise((resolve) => rl.once('line', resolve));
+
+let browser;
+const pauseOnExit = async (ms) => new Promise((r) => setTimeout(r, ms));
 try {
+  console.log('[boss:wizard] 启动浏览器（持久登录目录：data/private/boss-profile）...');
+  browser = await chromium.launchPersistentContext(PROFILE, { headless: false, viewport: { width: 1360, height: 900 } });
   const page = browser.pages()[0] ?? (await browser.newPage());
-  console.log(`[boss:wizard] 打开求职搜索页：${searchUrl}`);
-  await page.goto('https://www.zhipin.com/web/geek/recommend', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1500);
-  console.log('[boss:wizard] 若出现登录/二维码，请用手机 BOSS App 扫码登录（约 30–120 秒）。');
-  // 粗略登录检测：页面主体不再出现“扫码/登录”提示，最多等 180 秒
-  const deadline = Date.now() + 180_000;
-  while (Date.now() < deadline) {
-    const body = await page.evaluate(() => document.body?.innerText?.slice(0, 4000) ?? '');
-    const loginish = /登录|扫码|验证/.test(body);
-    if (!loginish) {
-      console.log('[boss:wizard] 检测到已登录。');
-      break;
-    }
-    await page.waitForTimeout(5000);
+
+  console.log('[boss:wizard] 打开 BOSS 首页/推荐页，请在弹出的浏览器里完成登录...');
+  try {
+    await page.goto('https://www.zhipin.com/web/geek/recommend', { waitUntil: 'domcontentloaded', timeout: 45000 });
+  } catch (e) {
+    console.error(`[boss:wizard] 打开首页失败：${e.message}`);
+    console.error('[boss:wizard] 若提示网络/连接问题，请确认本机可访问 www.zhipin.com 后重试。');
+    await pauseOnExit(15000);
+    process.exit(3);
   }
-  await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(6000);
+  await page.waitForTimeout(3000);
+
+  console.log('────────────────────────────────────────────');
+  console.log('【请操作浏览器】');
+  console.log(' 1) 若出现二维码/登录页：用手机 BOSS App 扫码登录；');
+  console.log(' 2) 确认已进入求职页面（能看到推荐/搜索内容）；');
+  console.log(' 3) 然后回到【这个终端】按回车键继续。');
+  console.log('────────────────────────────────────────────');
+  await waitEnter();
+
+  console.log(`[boss:wizard] 打开搜索页：${searchUrl}`);
+  try {
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  } catch (e) {
+    console.error(`[boss:wizard] 打开搜索页失败：${e.message}`);
+    await pauseOnExit(15000);
+    process.exit(3);
+  }
+  // 等待岗位卡片出现（最多约 40s）
+  let found = 0;
+  for (let i = 0; i < 14; i++) {
+    await page.waitForTimeout(3000);
+    found = await page.evaluate(
+      () => document.querySelectorAll('a[href*="/job_detail/"]').length,
+    );
+    if (found > 0) break;
+  }
+  if (found === 0) {
+    console.error('[boss:wizard] 40 秒内未在搜索页找到岗位卡片。可能原因：未登录 / 出现验证码 / 页面结构变化。');
+    console.error('[boss:wizard] 请人工在浏览器里确认状态后告诉我现象（本窗口 15 秒后关闭）。');
+    await pauseOnExit(15000);
+    process.exit(3);
+  }
+
   const dump = await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a'))
       .filter((a) => (a.getAttribute('href') ?? '').includes('/job_detail/'))
@@ -61,15 +93,18 @@ try {
     });
     return { url: location.href, cards };
   });
-  if (dump.cards.length === 0) {
-    console.error('[boss:wizard] 未抓取到岗位卡片。可能原因：未登录/出现验证/页面结构变化。请在浏览器里人工确认后重跑。');
-    process.exit(3);
-  }
+
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const out = join(DUMP_DIR, `boss-dump-${ts}.json`);
   writeFileSync(out, JSON.stringify(dump, null, 1));
   console.log(`[boss:wizard] 已导出 ${dump.cards.length} 条岗位结构 → ${out}`);
-  console.log('[boss:wizard] 只读完成。现在把该文件路径告诉我，我来校准真实选择器。');
+  console.log('[boss:wizard] 只读完成。把上面这行输出（或文件路径）发我，我来校准真实选择器。');
+  await pauseOnExit(5000);
+} catch (e) {
+  console.error(`[boss:wizard] 出错：${e?.message ?? e}`);
+  console.error('[boss:wizard] 请把以上红字发给我（浏览器 15 秒后关闭）。');
+  await pauseOnExit(15000);
 } finally {
-  await browser.close();
+  rl.close();
+  await browser?.close().catch(() => {});
 }
