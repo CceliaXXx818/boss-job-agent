@@ -11,7 +11,7 @@
 greeting_templates:
   - template_id: t1
     approved: true
-    text: "您好，我有5年产品经理经验、其中2年专注AI方向，主导过智能客服、对话式AI等产品0-1落地，熟悉大模型应用与Agent工作流，看到贵司这个岗位方向与我的经历比较匹配，希望进一步沟通，谢谢。"
+    text: "您好，我有5年产品经理经验、其中2年专注AI方向，主导过智能客服、对话式AI产品0-1落地，熟悉大模型应用与Agent工作流，看到贵司这个岗位方向与我的经历比较匹配，希望进一步沟通，谢谢。"
     slots: []
     rotation_weight: 1
   - template_id: t2
