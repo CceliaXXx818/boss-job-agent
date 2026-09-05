@@ -10,3 +10,4 @@ coverage/
 *.tsbuildinfo
 .toolcache/
 .DS_Storetests/boss-jobs*.csv
+config/candidate.json

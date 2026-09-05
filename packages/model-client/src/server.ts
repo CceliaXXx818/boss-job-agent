@@ -11,7 +11,26 @@ import type { CandidateProfileText } from './score';
  * 纪律：先规则闸（排除词/薪资下限），通过才调模型；本机只监听 127.0.0.1。
  */
 
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 const PORT = Number(process.env.SCORE_PORT ?? 8799);
+const CANDIDATE_FILE = process.env.CANDIDATE_FILE ?? join(process.cwd(), 'config', 'candidate.json');
+
+function loadCandidate(): CandidateProfileText {
+  try {
+    if (existsSync(CANDIDATE_FILE)) {
+      const raw = JSON.parse(readFileSync(CANDIDATE_FILE, 'utf8'));
+      const clean = {} as Record<string, unknown>;
+      for (const k of Object.keys(DEFAULT_CANDIDATE)) if (raw[k] !== undefined) clean[k] = raw[k];
+      return { ...DEFAULT_CANDIDATE, ...(clean as Partial<CandidateProfileText>) };
+    }
+  } catch (e) {
+    console.warn(`[score:serve] 读取 ${CANDIDATE_FILE} 失败，使用代码内默认画像：${(e as Error).message}`);
+  }
+  return DEFAULT_CANDIDATE;
+}
+const FILE_CANDIDATE = loadCandidate();
 
 function parseSalaryMinK(ascii: string): number | null {
   const m = ascii?.match(/^(\d{2,3})\s*[-~]/);
@@ -57,7 +76,7 @@ const server = createServer(async (req, res) => {
       res.writeHead(400).end(JSON.stringify({ error: 'jobs 不能为空' }));
       return;
     }
-    const candidate = { ...DEFAULT_CANDIDATE, ...(body.candidate ?? {}) };
+    const candidate = { ...FILE_CANDIDATE, ...(body.candidate ?? {}) };
     let client: ModelClient | null = null;
     const results = [];
     for (const j of jobs) {
@@ -101,4 +120,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[score:serve] 本机打分服务 http://127.0.0.1:${PORT}（只监听本机）`);
+  console.log(`[score:serve] 画像来源：${existsSync(CANDIDATE_FILE) ? CANDIDATE_FILE : '代码内默认（可建 config/candidate.json 自定义）'}`);
 });
