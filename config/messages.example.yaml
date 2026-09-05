@@ -5,13 +5,13 @@
 #   - approved: true 的模板才可被 send_greeting / send_template_reply 使用
 #   - 模板内只允许替换 slots 白名单字段（hr_name/job_title/jd_core_requirement/evidence_project），
 #     其余文本来自模板本体，禁止生成简历中不存在的能力
-#   - t1 为本人授权文案（开源示例不含真实姓名；如需带称呼/姓名请在本地 messages.yaml 自行加回）
+#   - t1 为通用示例文案（虚构）；发布/他人使用时请替换为自己的话术
 # ============================================================
 
 greeting_templates:
   - template_id: t1
     approved: true
-    text: "您好，我有7年以上产品经理经验，其中近3年专注AI产品方向，具备海外学习背景及英文沟通能力。过去基于二手车金融业务负责过AI语音外呼、LLM+RAG智能客服等AI产品0-1落地，熟悉Agent Workflow、RAG、Prompt优化和AI效果评估。希望有机会和您进一步交流。"
+    text: "您好，我有5年产品经理经验、其中2年专注AI方向，主导过智能客服、对话式AI等产品0-1落地，熟悉大模型应用与Agent工作流，看到贵司这个岗位方向与我的经历比较匹配，希望进一步沟通，谢谢。"
     slots: []
     rotation_weight: 1
   - template_id: t2
