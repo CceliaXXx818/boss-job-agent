@@ -1,8 +1,8 @@
 {
   "name": "job-application-agent",
-  "version": "0.0.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "本地运行、定时执行、可审计的自动求职投递 Agent（P0：Mock 平台阶段，不连接真实 BOSS）",
+  "description": "BOSS 岗位助手（Job Agent）：Chrome 扩展 + 本机 AI 打分，自动搜索/筛选/打招呼/日报（个人自用，风险自担）",
   "type": "module",
   "engines": {
     "node": ">=22.13.0"

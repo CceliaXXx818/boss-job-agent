@@ -39,7 +39,7 @@
 
 ### 第 0 步：确认环境
 - 电脑上装有 **Google Chrome**
-- （仅 AI 打分需要）装了 **Node.js 18+**（建议 20+），并有一个 [DeepSeek API Key](https://platform.deepseek.com/)
+- （仅 AI 打分需要）装了 **Node.js 20+**，并有一个 [DeepSeek API Key](https://platform.deepseek.com/)
 
 ### 第 1 步：安装扩展
 1. 打开 Chrome，地址栏输入 `chrome://extensions` 回车
