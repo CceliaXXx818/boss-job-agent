@@ -1,14 +1,21 @@
+# 敏感/本地数据（绝不提交）
+data/
+.env
+*.log
+reports/
+tests/boss-jobs*.csv
+config/candidate.json
 data/private/
 data/*.db
 data/consent.txt
-reports/
-.env
-*.log
+
+# 工具与产物
 node_modules/
 dist/
 coverage/
 *.tsbuildinfo
 .toolcache/
-.DS_Storetests/boss-jobs*.csv
-config/candidate.json
+
+# macOS
+.DS_Store
 **/.DS_Store
