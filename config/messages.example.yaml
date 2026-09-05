@@ -16,7 +16,7 @@ greeting_templates:
     rotation_weight: 1
   - template_id: t2
     approved: true
-    text: "您好，我7年以上产品经理经验、近3年专注AI产品，做过AI语音外呼、LLM+RAG智能客服的0-1落地。看到贵司「{{job_title}}」方向「{{jd_core_requirement}}」与我的经历匹配，希望进一步交流，谢谢。"
+    text: "您好，我有多年产品经理经验、专注AI方向，做过智能客服/知识库问答等产品0-1落地。看到贵司「{{job_title}}」方向「{{jd_core_requirement}}」与我的经历匹配，希望进一步交流，谢谢。"
     slots: [job_title, jd_core_requirement]
     rotation_weight: 1
   - template_id: t3
