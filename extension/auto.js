@@ -28,6 +28,20 @@ function setStatus(s) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
+const HIST_KEY = 'greetedHistory';
+async function getHistory() {
+  const s = await chrome.storage.local.get(HIST_KEY);
+  return new Set(Array.isArray(s[HIST_KEY]) ? s[HIST_KEY] : []);
+}
+async function addHistory(jobId) {
+  const h = await getHistory();
+  if (!h.has(jobId)) {
+    h.add(jobId);
+    await chrome.storage.local.set({ [HIST_KEY]: [...h] });
+  }
+  return h;
+}
+
 async function refreshQuota() {
   const cap = Number($('cap').value);
   const key = `greet-${todayKey()}`;
@@ -98,9 +112,9 @@ function renderRows(rows) {
   tb.innerHTML = rows
     .map(
       (r, i) =>
-        `<tr><td><input type="checkbox" data-i="${i}" ${i < Number($('cap').value) ? 'checked' : ''}></td>` +
-        `<td>${r.title}</td><td>${r.company}</td><td>${r.area}</td><td>${r.tags || ''}</td>` +
-        `<td>${r.score}</td><td class="${r.__status === '已打招呼' ? 'ok' : r.__status ? 'warn' : 'skip'}">${r.__status ?? '待处理'}</td></tr>`,
+        `<tr><td><input type="checkbox" data-i="${i}" ${!r.__history && i < Number($('cap').value) ? 'checked' : ''} ${r.__history ? 'disabled' : ''}></td>` +
+        `<td>${r.title}${r.__history ? ' <span class="ok">✓历史已打</span>' : ''}</td><td>${r.company}</td><td>${r.area}</td><td>${r.tags || ''}</td>` +
+        `<td>${r.score}</td><td class="${r.__status === '已打招呼' ? 'ok' : r.__status === '历史已打' ? 'skip' : r.__status ? 'warn' : 'skip'}">${r.__status ?? (r.__history ? '历史已打' : '待处理')}</td></tr>`,
     )
     .join('');
 }
@@ -125,7 +139,10 @@ $('run').onclick = async () => {
       }
     }
     selectedRows = filterRank([...seen.values()]);
-    log(`共抓取 ${selectedRows.length} 个不同岗位，已过滤并排序`);
+    const hist = await getHistory();
+    for (const r of selectedRows) r.__history = hist.has(r.jobId);
+    const histCount = selectedRows.filter((r) => r.__history).length;
+    log(`共抓取 ${selectedRows.length} 个不同岗位，已过滤并排序；其中 ${histCount} 个此前已打过招呼（将自动跳过）`);
     renderRows(selectedRows);
     setStatus(`完成：${selectedRows.length} 条`);
   } catch (e) {
@@ -165,6 +182,12 @@ $('greet').onclick = async () => {
     let done = Number(st[key] ?? 0);
     for (const row of rows.slice(0, cap)) {
       if (stopped || done >= cap) break;
+      if (row.__history) {
+        log(`跳过（历史已打）：${row.title}`);
+        row.__status = '历史已打';
+        renderRows(selectedRows);
+        continue;
+      }
       log(`打招呼：${row.title}（${row.company}）`);
       const r = await greetOne(tab.id, row);
       const sent = r?.ok === true && (r.stage === 'sent' || r.stage === 'sent_by_enter');
@@ -174,6 +197,8 @@ $('greet').onclick = async () => {
         await refreshQuota();
         log(`  ✓ ${r.detail}（今日 ${done}/${cap}）`);
         row.__status = '已打招呼';
+        row.__history = true;
+        await addHistory(row.jobId);
         if (detailMap.has(row.jobId)) detailMap.get(row.jobId).__status = '已打招呼';
       } else {
         const why = r?.detail ?? r?.stage ?? '未知';
