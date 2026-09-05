@@ -73,7 +73,62 @@ npm run score:serve         # 出现 "http://127.0.0.1:8799" 即成功，保持�
 
 ---
 
-## 四、常见问题
+## 四、你的个人画像怎么填（AI 打分用）
+
+AI 打分前会读一个"候选人画像"文件：`config/candidate.json`。它决定模型认为你是什么背景、匹配什么岗位。**这个文件不会提交到仓库**，只有你自己电脑上有。
+
+### 第 1 步：生成你的画像文件（一次即可）
+
+```bash
+cd 项目目录
+cp config/candidate.example.json config/candidate.json
+```
+
+### 第 2 步：打开文件，改成你自己的
+
+用编辑器打开 `config/candidate.json`，把示例值替换成真实情况：
+
+```json
+{
+  "experienceYears": 7,
+  "aiProductYears": 3,
+  "evidenceProjects": ["AI语音外呼产品", "LLM+RAG智能客服", "智能质检平台"],
+  "preferredSkills": ["LLM", "Agent", "RAG", "Prompt Engineering", "智能客服"],
+  "targetTitles": ["AI产品经理", "Agent产品经理", "大模型产品经理"],
+  "excludeTokens": ["销售", "驻外", "数据标注", "纯运营"]
+}
+```
+
+各字段含义：
+
+| 字段 | 填什么 | 影响 |
+|---|---|---|
+| `experienceYears` | 你的总产品经验年数 | 和 JD 要求的经验年限对比 |
+| `aiProductYears` | 其中专注 AI 的年数 | JD 要求"X 年 AI 经验"时用它 |
+| `evidenceProjects` | 你做过的项目（一句话一个） | 模型从这里面找"岗位要求的证据"，**只认这里写的，不会编造** |
+| `preferredSkills` | 你的核心技能关键词 | JD 里命中越多，AI 打分越高 |
+| `targetTitles` | 你想投的岗位名称关键词 | 这些词之外的岗位会被降低优先级 |
+| `excludeTokens` | 绝对不投的关键词 | 命中就**不进打分、自动不勾选**（如销售/驻外/纯运营） |
+
+> 注意：`evidenceProjects` 是"证据库"——**不要写你不会的东西**，否则 AI 会拿它当真去匹配。
+
+### 第 3 步：改完生效
+
+保存文件后，**重启打分服务**（终端里先 `Ctrl+C` 停掉再运行）：
+
+```bash
+npm run score:serve
+```
+
+启动日志里会出现：`画像来源：config/candidate.json`，说明读到了你的配置。之后 ③ 抓详情就会用你的画像自动打分。
+
+### 顺便说清另一处
+- **打招呼话术**（发给 HR 的问候文字）：不在这个文件里，在扩展「自动投递助手」页面**顶部的输入框**直接改。
+- 公开发布的仓库里只有假示例（`candidate.example.json`），你的真实画像只存在于你本地的 `config/candidate.json`。
+
+---
+
+## 五、常见问题
 
 | 问题 | 回答 |
 |---|---|
@@ -86,7 +141,7 @@ npm run score:serve         # 出现 "http://127.0.0.1:8799" 即成功，保持�
 
 ---
 
-## 五、文件与文档
+## 六、文件与文档
 
 - `extension/` — Chrome 扩展（核心）
 - `packages/model-client/` — 本地 AI 打分服务源码
@@ -95,7 +150,7 @@ npm run score:serve         # 出现 "http://127.0.0.1:8799" 即成功，保持�
 
 ---
 
-## 六、免责声明与许可
+## 七、免责声明与许可
 
 - 本项目仅供学习与个人求职使用，非官方工具。
 - 自动打招呼等操作存在账号受限风险，
