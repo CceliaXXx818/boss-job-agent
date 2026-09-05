@@ -37,7 +37,7 @@ npm run score:serve   # 启动后显示 http://127.0.0.1:8799（只监听本机�
 |---|---|
 | 城市/关键词/每日上限/打招呼话术/自动打分 | 扩展「自动投递助手」页面顶部 |
 | 排除词 / 加分关键词 / 打招呼入口文案 | `extension/auto.js` 顶部常量（后续版本会做成设置页） |
-| 打分用候选人画像 | `packages/model-client/src/score.ts` 的 `DEFAULT_CANDIDATE`（后续版本改为读本地配置文件） |
+| 打分用候选人画像 | 项目根 `config/candidate.json`（示例：`config/candidate.example.json`） |
 | DeepSeek API Key | 项目根 `.env`（服务端读取） |
 
 ## 免责声明
