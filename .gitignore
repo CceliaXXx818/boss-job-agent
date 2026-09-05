@@ -11,3 +11,4 @@ coverage/
 .toolcache/
 .DS_Storetests/boss-jobs*.csv
 config/candidate.json
+**/.DS_Store
