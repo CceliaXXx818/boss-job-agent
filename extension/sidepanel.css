@@ -1,0 +1,101 @@
+:root {
+  --bg: #ffffff;
+  --border: #e3e6ea;
+  --text: #1f2328;
+  --muted: #6b7280;
+  --primary: #1a73e8;
+  --ok: #1a7f37;
+  --warn: #b45309;
+  --bad: #c02b2b;
+  --chip: #f4f6f8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.55 system-ui, -apple-system, "PingFang SC", sans-serif;
+  min-width: 340px;
+}
+
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.brand { font-weight: 700; font-size: 14px; }
+.badges { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.badge { font-size: 11px; padding: 2px 6px; border-radius: 9px; border: 1px solid var(--border); background: var(--chip); color: var(--muted); }
+.badge-ok { color: var(--ok); border-color: #bfe3c6; background: #f2fbf4; }
+.badge-bad { color: var(--bad); border-color: #f0c9c9; background: #fdf3f3; }
+
+.state { display: block; }
+.hint { color: var(--muted); margin: 4px 0 8px; }
+
+textarea, input[type="number"] {
+  width: 100%; border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 9px; font: inherit; color: var(--text); background: #fff;
+}
+textarea { resize: vertical; }
+input[type="number"] { width: 70px; }
+
+.row { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+
+.btn-primary, .btn-secondary {
+  cursor: pointer; border-radius: 6px; padding: 7px 14px; font: inherit;
+}
+.btn-primary { background: var(--primary); color: #fff; border: 1px solid var(--primary); }
+.btn-secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+.btn-primary:disabled, .btn-secondary:disabled { opacity: .55; cursor: not-allowed; }
+
+.card { border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; margin: 8px 0; }
+.card h3 { margin: 0 0 6px; font-size: 13px; }
+
+.kv { list-style: none; margin: 0; padding: 0; }
+.kv li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.kv li span { color: var(--muted); }
+
+.plan-list { list-style: none; margin: 0; padding: 0; }
+.plan-list li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--border); }
+.plan-list li:last-child { border-bottom: none; }
+
+.status { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--chip); color: var(--muted); }
+.status-running { color: var(--primary); background: #eef4fe; }
+.status-done { color: var(--ok); background: #f2fbf4; }
+.status-failed { color: var(--bad); background: #fdf3f3; }
+
+.stats { display: flex; gap: 14px; }
+.stats div { text-align: center; flex: 1; }
+.stats span { display: block; font-size: 18px; font-weight: 700; }
+.stats label { font-size: 11px; color: var(--muted); }
+
+.decision { background: #fbfcfe; border-left: 3px solid var(--primary); padding: 7px 9px; border-radius: 4px; }
+
+.timeline { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid var(--border); }
+.timeline li { padding: 2px 0 6px; font-size: 12px; }
+.timeline .t { color: var(--muted); margin-right: 4px; }
+.timeline .step { font-weight: 600; }
+
+.cards { display: flex; flex-direction: column; gap: 8px; }
+.job-card { border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; }
+.job-card.selected { border-color: var(--primary); background: #fbfdff; }
+.job-head { display: flex; gap: 6px; align-items: flex-start; }
+.job-head input[type="checkbox"] { margin-top: 3px; }
+.job-title { font-weight: 600; }
+.job-meta { color: var(--muted); font-size: 12px; margin: 2px 0 4px; }
+.score-badge { font-weight: 700; padding: 1px 7px; border-radius: 9px; font-size: 12px; }
+.score-hot { color: #0f6b2f; background: #e9f8ee; }
+.score-apply { color: #8a6d00; background: #fdf6e3; }
+.score-review { color: #a05200; background: #fff3e6; }
+.score-reject { color: #a12626; background: #fdeeee; }
+.job-why { font-size: 12px; color: #333; }
+.job-why ul { margin: 3px 0 3px 16px; padding: 0; }
+.job-actions { margin-top: 4px; }
+.job-actions a { font-size: 12px; color: var(--primary); text-decoration: none; }
+
+.box { border-radius: 6px; padding: 8px 10px; margin: 8px 0; font-size: 12px; }
+.box-error { background: #fdf3f3; border: 1px solid #f0c9c9; color: var(--bad); }
+.box-warn { background: #fff8ec; border: 1px solid #f0dcb9; color: var(--warn); }
+
+.muted { color: var(--muted); }
+.small { font-size: 11px; }

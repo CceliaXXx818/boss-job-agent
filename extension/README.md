@@ -1,6 +1,6 @@
 # BOSS 岗位助手（Chrome 扩展）—— 使用说明
 
-> 个人求职助手 / 开源作品集项目。**非官方、与 BOSS 直聘无任何关联。**
+> 个人求职助手 
 > 自动化操作可能违反平台服务条款并带来账号风险；请自行判断并**风险自担**。项目不含任何反检测/绕过验证能力。
 
 ## 功能（概览）
@@ -37,7 +37,7 @@ npm run score:serve   # 启动后显示 http://127.0.0.1:8799（只监听本机�
 |---|---|
 | 城市/关键词/每日上限/打招呼话术/自动打分 | 扩展「自动投递助手」页面顶部 |
 | 排除词 / 加分关键词 / 打招呼入口文案 | `extension/auto.js` 顶部常量（后续版本会做成设置页） |
-| 打分用候选人画像 | 项目根 `config/candidate.json`（示例：`config/candidate.example.json`） |
+| 打分用候选人画像 | `packages/model-client/src/score.ts` 的 `DEFAULT_CANDIDATE`（后续版本改为读本地配置文件） |
 | DeepSeek API Key | 项目根 `.env`（服务端读取） |
 
 ## 免责声明

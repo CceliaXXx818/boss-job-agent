@@ -20,7 +20,20 @@ async function activeZhipinTab() {
   return tab;
 }
 
-document.getElementById('auto').onclick = () => {
+// 主入口：打开 Side Panel；失败则回退到旧版 auto.html（Legacy/Debug）
+document.getElementById('auto').onclick = async () => {
+  try {
+    const win = await chrome.windows.getCurrent();
+    await chrome.sidePanel.open({ windowId: win.id });
+    window.close();
+  } catch (e) {
+    console.warn('sidePanel.open 失败，回退到 legacy 页面：', e);
+    chrome.tabs.create({ url: chrome.runtime.getURL('auto.html') });
+  }
+};
+
+// 显式打开 Legacy 调试页（保留 V0.3 能力）
+document.getElementById('legacy').onclick = () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('auto.html') });
 };
 

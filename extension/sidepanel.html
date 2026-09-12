@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>BOSS Job Agent</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">BOSS Job Agent</div>
+    <div class="badges">
+      <span id="bossBadge" class="badge badge-idle">BOSS 未连接</span>
+      <span id="aiBadge" class="badge badge-idle">AI 服务未连接</span>
+    </div>
+  </header>
+
+  <!-- ===== IDLE ===== -->
+  <section id="stateIdle" class="state">
+    <p class="hint">今天想找什么工作？用一句话描述即可（城市、方向、薪资、排除项）。</p>
+    <textarea id="goalInput" rows="4" placeholder="例如：杭州和深圳AI产品经理，优先Agent/LLM，30K以上，不要外包、售前、纯运营"></textarea>
+    <div class="row">
+      <label>每日上限</label>
+      <input id="capInput" type="number" min="1" max="10" value="5" />
+      <span class="muted">今日已联系 <b id="quotaText">0 / 5</b></span>
+    </div>
+    <button id="startBtn" class="btn-primary">开始找工作</button>
+    <div id="idleError" class="box box-error" hidden></div>
+    <p class="muted small">LLM 决定"做什么"，确定性代码决定"怎么做"，最终是否打招呼由你决定。</p>
+  </section>
+
+  <!-- ===== RUNNING ===== -->
+  <section id="stateRunning" class="state" hidden>
+    <div class="card">
+      <h3>Goal Summary</h3>
+      <ul id="goalSummary" class="kv"></ul>
+    </div>
+    <div class="card">
+      <h3>Today's Plan <span id="planProgress" class="muted small"></span></h3>
+      <ul id="planList" class="plan-list"></ul>
+    </div>
+    <div class="card">
+      <h3>统计</h3>
+      <div class="stats">
+        <div><span id="statDiscovered">0</span><label>Discovered</label></div>
+        <div><span id="statQualified">0</span><label>Qualified</label></div>
+        <div><span id="statStrong">0</span><label>Strong Matches</label></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Agent Decision</h3>
+      <div id="decisionBox" class="decision">等待规划…</div>
+    </div>
+    <div class="row">
+      <button id="stopBtn" class="btn-secondary">暂停</button>
+      <span id="stateText" class="muted"></span>
+    </div>
+    <div class="card">
+      <h3>Agent Activity</h3>
+      <ol id="activityList" class="timeline"></ol>
+    </div>
+  </section>
+
+  <!-- ===== COMPLETE ===== -->
+  <section id="stateComplete" class="state" hidden>
+    <div class="card">
+      <h3>Shortlist（score ≥ 75）</h3>
+      <div id="jobCards" class="cards"></div>
+    </div>
+    <div class="card" id="approveBox" hidden>
+      <h3>确认联系</h3>
+      <ul class="kv">
+        <li><span>即将联系</span><b id="approveCount">0</b></li>
+        <li><span>今日已联系</span><b id="approveQuota">0 / 5</b></li>
+        <li><span>今日最大数量</span><b id="approveCap">5</b></li>
+      </ul>
+      <label class="small muted">打招呼话术</label>
+      <textarea id="greetText" rows="3"></textarea>
+      <div class="row">
+        <button id="approveBtn" class="btn-primary">确认并联系选中岗位</button>
+        <button id="cancelApprove" class="btn-secondary">取消</button>
+      </div>
+      <div id="completeError" class="box box-error" hidden></div>
+    </div>
+    <div class="row">
+      <button id="toApproveBtn" class="btn-primary">联系选中岗位</button>
+      <button id="restartBtn" class="btn-secondary">重新开始</button>
+      <span class="muted">已选择 <b id="selectedCount">0</b> 个岗位</span>
+    </div>
+    <div class="card">
+      <h3>Agent Activity</h3>
+      <ol id="activityList2" class="timeline"></ol>
+    </div>
+  </section>
+
+  <!-- ===== STOPPED / ERROR ===== -->
+  <section id="stateStopped" class="state" hidden>
+    <div class="box box-warn" id="stoppedBox"></div>
+    <div class="row">
+      <button id="retryBtn" class="btn-primary">重新开始</button>
+    </div>
+  </section>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
