@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { DEFAULT_CANDIDATE, scoreJobWithModel, tierOf, DECISION_LABEL } from './score';
 import type { JobScoreInput } from './score';
 import { ModelClient } from './client';
+import { planJobSearch } from './job-plan';
 import type { CandidateProfileText } from './score';
 
 /**
@@ -57,6 +58,38 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true }));
+    return;
+  }
+  if (req.method === 'GET' && req.url === '/config') {
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(
+      JSON.stringify({
+        ok: true,
+        candidate: {
+          excludeTokens: FILE_CANDIDATE.excludeTokens,
+          preferredSkills: FILE_CANDIDATE.preferredSkills,
+          targetTitles: FILE_CANDIDATE.targetTitles,
+          experienceYears: FILE_CANDIDATE.experienceYears,
+          aiProductYears: FILE_CANDIDATE.aiProductYears,
+        },
+      }),
+    );
+    return;
+  }
+  if (req.method === 'POST' && req.url === '/plan') {
+    try {
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(c as Buffer);
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { goal?: string };
+      if (!body.goal || !body.goal.trim()) {
+        res.writeHead(400).end(JSON.stringify({ ok: false, error: 'goal 不能为空' }));
+        return;
+      }
+      const client = new ModelClient();
+      const plan = await planJobSearch(client, body.goal);
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, plan }));
+    } catch (e) {
+      res.writeHead(500).end(JSON.stringify({ ok: false, error: (e as Error).message }));
+    }
     return;
   }
   if (req.method !== 'POST' || req.url !== '/score') {
