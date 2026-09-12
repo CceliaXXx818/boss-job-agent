@@ -406,6 +406,62 @@ function renderShortlist(strong) {
   $('selectedCount').textContent = '0';
 }
 
+// ---------------- Phase 5：用户批准后的打招呼（复用 content.js greetFull） ----------------
+async function greetSelected() {
+  const text = $('greetText').value.trim();
+  const cap = Number($('capInput').value) || 5;
+  const key = `greet-${todayKey()}`;
+  const st = await chrome.storage.local.get(key);
+  let done = Number(st[key] ?? 0);
+  const history = await getHistory();
+  const selected = (session.shortlist ?? []).filter((j) => session.selectedIds.has(j.jobId));
+  if (!selected.length) {
+    $('completeError').hidden = false;
+    $('completeError').textContent = '没有选中任何岗位。';
+    return;
+  }
+  const tab = await findBossTab();
+  addActivity('Greeting', `用户已批准：准备联系 ${selected.length} 个岗位（今日 ${done}/${cap}）`);
+  let sent = 0;
+  let skipped = 0;
+  for (const job of selected) {
+    // 三重闸门：用户批准 + 每日上限 + 历史去重（规则优先于任何模型判断）
+    const gate = canGreet({ approved: true, dailyDone: done, dailyCap: cap, jobId: job.jobId, history });
+    if (!gate.ok) {
+      skipped++;
+      addActivity('Greeting', `跳过 ${job.title}：${gate.reason}`);
+      continue;
+    }
+    try {
+      await chrome.tabs.update(tab.id, { url: `https://www.zhipin.com${job.href}` });
+      await sleep(4200);
+      const r = await sendTab(tab.id, { type: 'greetFull', labels: GREET_LABELS, text });
+      const ok = r?.ok === true && (r.stage === 'sent' || r.stage === 'sent_by_enter');
+      if (!ok) {
+        addActivity('Greeting', `${job.title} 未完成发送：${r?.detail ?? r?.stage ?? '未知'}`);
+        throw new Error('BOSS 页面需要人工处理（打招呼未确认发送）');
+      }
+      sent++;
+      done++;
+      await chrome.storage.local.set({ [key]: done });
+      await addHistory(job.jobId);
+      history.add(job.jobId);
+      job.__greeted = true;
+      addActivity('Greeting', `✓ ${job.title}（今日 ${done}/${cap}）`);
+      await refreshQuota();
+    } catch (e) {
+      $('completeError').hidden = false;
+      $('completeError').textContent = `已停止：${e?.message ?? e}。请人工处理该岗位后重新开始。`;
+      stop(`打招呼中断：${e?.message ?? e}`);
+      return;
+    }
+  }
+  $('completeError').hidden = false;
+  $('completeError').className = 'box';
+  $('completeError').textContent = `完成：成功 ${sent} 个，跳过 ${skipped} 个（今日 ${done}/${cap}）。`;
+  addActivity('Greeting', `本轮结束：成功 ${sent}，跳过 ${skipped}`);
+}
+
 // ---------------- 连接状态 / 配额 ----------------
 async function checkBoss() {
   const ok = (await chrome.tabs.query({ url: ['https://*.zhipin.com/*'] })).length > 0;
@@ -439,6 +495,21 @@ export async function refreshQuota() {
   $('approveQuota').textContent = `${done} / ${cap}`;
   $('approveCap').textContent = String(cap);
 }
+
+const HIST_KEY = 'greetedHistory';
+async function getHistory() {
+  const st = await chrome.storage.local.get(HIST_KEY);
+  return new Set(Array.isArray(st[HIST_KEY]) ? st[HIST_KEY] : []);
+}
+async function addHistory(jobId) {
+  const h = await getHistory();
+  if (!h.has(jobId)) {
+    h.add(jobId);
+    await chrome.storage.local.set({ [HIST_KEY]: [...h] });
+  }
+}
+
+const GREET_LABELS = ['打招呼', '立即沟通', '和TA聊聊', '开聊', '开始沟通', '打个招呼', '马上沟通', '立即开聊', '聊一聊', '发消息'];
 
 const DEFAULT_GREET =
   '您好，我有5年产品经理经验、其中2年专注AI方向，主导过智能客服、知识库问答等产品0-1落地，熟悉大模型应用与Agent工作流，希望进一步交流，谢谢。';
@@ -493,10 +564,14 @@ function bind() {
     $('approveBox').hidden = true;
   };
   $('approveBtn').onclick = async () => {
-    session.approved = true;
-    await chrome.storage.local.set({ greetText: $('greetText').value });
-    $('completeError').hidden = false;
-    $('completeError').textContent = '打招呼流程将在 Phase 5 接入（需要用户批准 + 每日上限 + 历史去重）。';
+    $('completeError').hidden = true;
+    $('approveBtn').disabled = true;
+    try {
+      await chrome.storage.local.set({ greetText: $('greetText').value });
+      await greetSelected();
+    } finally {
+      $('approveBtn').disabled = false;
+    }
   };
 }
 
