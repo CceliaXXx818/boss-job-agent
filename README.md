@@ -1,421 +1,165 @@
-# BOSS 岗位助手（Job Agent）
+# BOSS Job Agent
 
-一个帮你更省事地找 BOSS 直聘岗位的 Chrome 扩展。
+**A goal-driven AI job-search agent running inside the user's browser.**
 
-它可以帮你自动搜索职位、筛掉不想看的岗位、批量抓 JD，还可以用 AI 帮你判断岗位值不值得投。
+你只要用一句自然语言描述目标，Agent 就会自己规划搜索、筛选、抓详情、AI 打分、评估结果并在需要时补充一轮搜索，最后把值得投的岗位排给你确认。
 
-你最后仍然自己决定投哪些，不会替你乱投。
-
-> ⚠️ BOSS 直聘并不鼓励自动化操作，批量打招呼等功能存在账号风险，请自行判断并控制使用频率。
+> 个人作品集项目，非官方工具、与 BOSS 直聘无关。自动化操作存在平台账号风险，请自行判断并**风险自担**。项目不含任何验证码绕过 / 反检测 / 指纹伪装能力。
 
 ---
 
-## 它能帮你做什么？
+## 核心特性
 
-平时找工作可能是这样：
-
-```text
-搜岗位
-→ 一个个点开看 JD
-→ 判断适不适合
-→ 复制话术打招呼
-→ 自己记今天投了哪些
-```
-
-用了这个工具之后，可以变成：
-
-```text
-选城市和关键词
-→ 自动搜索
-→ 自动筛选
-→ 批量抓岗位详情
-→ AI 帮你打分
-→ 你勾选想投的岗位
-→ 批量打招呼
-→ 自动生成日报
-```
+| 能力 | 说明 |
+|---|---|
+| **Goal-driven Planning** | 自然语言目标 → 结构化搜索计划（城市/岗位/技能/薪资/排除项 + 搜索词） |
+| **Adaptive Search** | 结果不足时自动 Replan **一次**，只允许"新增搜索词"，绝不放宽你的硬约束 |
+| **AI Job Matching** | 读 JD + 你的画像 → 0–100 分 + 优势 + 顾虑 + 一句话结论 |
+| **Human-in-the-loop** | Agent 只做推荐；**是否打招呼由你勾选 + 确认** |
+| **Browser-native Execution** | 所有页面动作都在你已登录的浏览器里用确定性代码完成 |
+| **Safety Policy** | 规则闸优先于模型、每日上限、跨天防重复、验证码/异常立即停止 |
 
 ---
 
-## 目前支持什么？
+## 架构：眼睛和手 vs 大脑
 
-### 不配置 AI 也能用
-
-安装 Chrome 扩展后，就可以直接使用这些功能：
-
-* 多城市、多关键词自动搜索
-* 自动合并并去重岗位
-* 排除不想看的岗位，比如销售、驻外、数据标注、纯运营
-* 抓取岗位详情，包括：
-
-  * 薪资
-  * 工作经验
-  * 学历
-  * 公司规模
-  * 融资情况
-  * JD 全文
-* 批量打招呼
-* 设置每天最多打招呼数量
-* 自动跳过已经打过招呼的岗位
-* 随时暂停
-* 自动生成当日求职日报
-* 导出 Markdown / JSON
-
-### 可选：AI 岗位匹配
-
-如果你有 DeepSeek API Key，还可以开启 AI 打分。
-
-AI 会结合：
-
-* 岗位 JD
-* 薪资
-* 经验和学历要求
-* 公司情况
-* 你的工作背景
-
-给岗位一个 0–100 的匹配分数，并告诉你：
-
-* 为什么匹配
-* 有什么优势
-* 有什么风险
-* 是否值得优先投递
-
-比如：
-
-```text
-86 分
-优先打招呼
-
-优势：
-- 有 LLM + RAG 项目经验
-- 有 AI 产品落地经验
-- 岗位方向和 Agent 产品高度相关
-
-顾虑：
-- JD 希望有 5 年 AI 产品经验
+```
+User Goal（自然语言）
+        ↓
+   Planner（LLM：/plan）            ← 大脑：理解目标、生成搜索计划
+        ↓
+   Search Plan（有限查询 ≤6）
+        ↓
+   Chrome Browser Tools             ← 眼睛和手：搜索 / 抓列表 / 抓详情
+        ↓
+      BOSS 直聘
+        ↓
+    Observation（岗位结构）
+        ↓
+  Filter（确定性规则：排除词/薪资） → Score（LLM：/score）
+        ↓
+   Evaluator（程序判断是否达标）
+        ↓
+  Replan once（LLM：/replan，最多 1 次）或 Complete
+        ↓
+   Human Approval（你勾选 + 确认）
+        ↓
+   Greeting（确定性代码，复用已验证的 greetFull）
 ```
 
-AI 只负责给建议，最后还是你自己决定投不投。
+- **Chrome Extension = Eyes + Hands**：读页面、点按钮，全部确定性实现（`content.js` / `sidepanel.js`）
+- **Agent Core / LLM = Brain**：理解目标、补充搜索策略、解释推荐理由（只输出结构化 JSON）
+- **规则层（`extension/core-logic.js`）= 纪律**：硬排除、限额、防重复、Replan 次数上限
+
+> LLM decides **WHAT** to do. Deterministic browser code decides **HOW**. User decides **WHETHER** consequential actions run.
 
 ---
 
-## 怎么开始用？
+## 快速开始
 
-### 1. 安装 Chrome 扩展
+### 1. 环境
+- Google Chrome
+- Node.js 20+（仅 AI 规划/打分需要）与一个 [DeepSeek API Key](https://platform.deepseek.com/)
 
-先下载这个项目，然后打开 Chrome：
-
-```text
-chrome://extensions
-```
-
-打开右上角的「开发者模式」。
-
-点击：
-
-```text
-加载已解压的扩展程序
-```
-
-然后选择项目里的：
-
-```text
-extension/
-```
-
-安装完成后，浏览器右上角就会出现「BOSS 岗位助手」。
-
----
-
-## 2. 登录 BOSS 直聘
-
-正常打开：
-
-```text
-www.zhipin.com
-```
-
-自己扫码登录。
-
-这个工具不会帮你登录，也不会绕过验证码。
-
----
-
-## 3. 第一次运行
-
-点击 Chrome 右上角的扩展图标，然后打开：
-
-```text
-自动投递助手
-```
-
-接下来：
-
-1. 选择城市
-2. 填搜索关键词
-3. 设置每天最多打几个招呼
-4. 点击「开始搜索与筛选」
-5. 看结果
-6. 勾选你想联系的岗位
-7. 点击「对选中岗位打招呼」
-
-建议第一次测试时，把每日上限设置成：
-
-```text
-1
-```
-
-先确认流程没问题，再慢慢增加。
-
----
-
-## 如果你想开启 AI 打分
-
-AI 打分需要：
-
-* Node.js 20+
-* DeepSeek API Key
-
-进入项目目录：
-
+### 2. 启动本机 AI 服务
 ```bash
+cd 项目目录
 npm ci
-```
-
-然后配置 Key：
-
-```bash
 echo 'DEEPSEEK_API_KEY=你的key' > .env
+npm run score:serve   # http://127.0.0.1:8799（只监听本机）
 ```
 
-启动本地打分服务：
-
-```bash
-npm run score:serve
-```
-
-如果终端里看到：
-
-```text
-http://127.0.0.1:8799
-```
-
-就说明启动成功了。
-
-保持这个终端开着，然后回到 Chrome 扩展。
-
-勾选：
-
-```text
-抓详情后自动打分
-```
-
-之后抓岗位详情时，就会自动出现 AI 分数。
-
----
-
-## AI 怎么知道你适合什么岗位？
-
-项目里有一个候选人画像文件：
-
-```text
-config/candidate.json
-```
-
-第一次使用时先复制模板：
-
+### 3. 配置你的画像（AI 打分依据）
 ```bash
 cp config/candidate.example.json config/candidate.json
+# 编辑 config/candidate.json：年限 / 技能 / 做过项目 / 目标岗位 / 排除词
 ```
 
-然后把里面改成自己的情况。
+### 4. 安装扩展
+1. `chrome://extensions` → 打开「开发者模式」
+2. 「加载已解压的扩展程序」→ 选择 `extension/` 目录
+3. 用 Chrome 打开 `www.zhipin.com` 并**手动登录**
 
-例如：
+### 5. 使用
+1. 点扩展图标 →「**打开 Job Agent**」（打开 Side Panel）
+2. 输入一句话目标，例如：
+   > 杭州和深圳AI产品经理，优先Agent和LLM方向，30K以上，不要外包、售前、纯运营
+3. 点「开始找工作」→ Agent 自动：Plan → 搜索 → 过滤 → 抓详情 → AI 打分 → （不足时）Replan 一次
+4. 查看 Shortlist（≥75 分岗位卡片），勾选你想联系的岗位
+5. 点「联系选中岗位」→ 确认数量/日限/话术 → 执行打招呼
 
-```json
-{
-  "experienceYears": 7,
-  "aiProductYears": 3,
-  "evidenceProjects": [
-    "AI语音外呼产品",
-    "LLM+RAG智能客服",
-    "智能质检平台"
-  ],
-  "preferredSkills": [
-    "LLM",
-    "Agent",
-    "RAG",
-    "Prompt Engineering",
-    "智能客服"
-  ],
-  "targetTitles": [
-    "AI产品经理",
-    "Agent产品经理",
-    "大模型产品经理"
-  ],
-  "excludeTokens": [
-    "销售",
-    "驻外",
-    "数据标注",
-    "纯运营"
-  ]
-}
+> 首次使用建议把每日上限设为 1，跑通一次再调大。
+
+---
+
+## Agent Loop（有限状态）
+
+状态机：`idle → planning → searching → filtering → fetching_details → scoring → evaluating → replanning → complete | stopped | error`
+
+- 搜索**顺序执行**，始终复用同一个已登录 BOSS 标签页
+- 只抓 Top 15 详情（已抓过的不重复抓）
+- **MAX_REPLAN = 1**：第二轮结束后无论结果多少都结束，绝不无限循环
+- 出现验证码 / 城市跳转 / content 无响应 → 立即 `stopped`，提示人工处理
+
+Agent Activity 面板展示的是**行为与决策摘要**（例如"当前仅找到 6 个 ≥75 分岗位，因此增加'AI平台产品经理'"），不是模型内部思维链。
+
+---
+
+## 数据结构（V0.4）
+
+```ts
+JobSearchGoal { rawGoal, cities[{name,code}], targetTitles[], preferredSkills[],
+                excludeTokens[], salaryMinK|null, targetQualifiedJobs, dailyGreetingCap }
+SearchQuery   { cityName, cityCode, keyword, source: 'initial' | 'replan' }
+AgentPlan     { goal, queries[], successCriteria{ targetQualifiedJobs, qualifiedScoreThreshold } }
 ```
 
-简单理解：
+- 目前支持城市：**杭州 101210100 / 深圳 101280600**；模型识别到其他城市时返回 warning，**不猜 city code**
+- 默认目标：`targetQualifiedJobs = 10`，`qualifiedScoreThreshold = 75`
 
-```text
-experienceYears
-总工作经验
+---
 
-aiProductYears
-AI 产品经验
+## 本机 AI 服务接口
 
-evidenceProjects
-你真实做过的项目
+| 接口 | 作用 |
+|---|---|
+| `GET /health` | 服务健康检查 |
+| `GET /config` | 返回画像摘要（排除词等，供硬过滤合并） |
+| `POST /score` | 岗位打分（复用 `candidate.json`） |
+| `POST /plan` | 自然语言 Goal → 搜索计划 |
+| `POST /replan` | 结果不足 → 仅新增搜索词（硬约束不可改） |
 
-preferredSkills
-你擅长或者希望继续做的方向
+服务只监听 `127.0.0.1`；API Key 仅存本地 `.env`。
 
-targetTitles
-你想找什么岗位
+---
 
-excludeTokens
-哪些岗位你坚决不投
-```
+## 安全与纪律（产品的一部分）
 
-其中最重要的是：
+- **规则优先**：命中排除词/低于薪资下限 → 直接移除，不进模型、不推荐
+- **三重闸门**：用户批准 + 每日上限 + 历史去重（打过招呼的岗位永不重复）
+- **异常即停**：验证码/风控/页面异常 → 停止并交还给人，绝不尝试绕过
+- **不做**：多 Agent、向量库、RAG、长期记忆、多平台、自动发简历、HR 自动聊天、后台定时、无限循环
 
-```text
-evidenceProjects
-```
+---
 
-AI 只会从你填写的真实经历里找匹配证据。
+## 旧入口（Legacy）
 
-所以不要为了提高分数乱填自己没做过的东西。
+`extension/auto.html` 保留为 **Legacy / Debug** 页面（V0.3 的调试台），Side Panel 是 V0.4 的推荐入口。popup 仍作为轻量启动器与诊断入口。
 
-修改完后，重启 AI 服务：
+---
+
+## 测试
 
 ```bash
-npm run score:serve
+npm run typecheck   # 类型检查
+npm test            # 全部单测（Planner/Replan/闸门/评分/状态机…）
+npm run ci          # typecheck + 版本锁定校验 + 全部测试
 ```
 
 ---
 
-## AI 分数怎么看？
+## 免责声明与许可
 
-程序目前会自动分成四档：
-
-| 分数     | 建议     |
-| ------ | ------ |
-| 80–100 | 优先打招呼  |
-| 75–79  | 可以打招呼  |
-| 65–74  | 建议人工确认 |
-| 0–64   | 不太建议投  |
-
-这里有一个很重要的设计原则：
-
-**AI 不直接替你投递。**
-
-它只是：
-
-```text
-帮你筛选
-→ 帮你排序
-→ 给出理由
-```
-
-最后到底联系哪些 HR，仍然由你勾选。
-
----
-
-## 它会不会乱投？
-
-目前做了几个限制：
-
-* 每天最多打招呼数量可设置
-* 默认每天最多 5 个
-* 同一个岗位不会重复打招呼
-* 可以随时暂停
-* 遇到验证码或页面异常会停止
-* 不会尝试绕过验证码
-* AI 不会自动决定是否投递
-
-建议始终先人工检查前几个结果。
-
----
-
-## 日报是什么？
-
-每次使用后，可以生成一份当天的求职日报。
-
-里面会记录：
-
-* 公司
-* 岗位
-* 城市
-* 薪资
-* 匹配分
-* 是否打过招呼
-* 当前状态
-
-也可以导出成：
-
-```text
-Markdown
-JSON
-```
-
-方便之后复盘自己的投递情况。
-
----
-
-## 项目结构
-
-```text
-extension/
-Chrome 扩展主体
-
-packages/model-client/
-AI 打分服务
-
-config/
-个人画像配置
-
-docs/
-设计和工程文档
-```
-
-如果你只是想直接使用，主要看：
-
-```text
-extension/
-```
-
-如果你想研究 AI 打分逻辑，再看：
-
-```text
-packages/model-client/
-```
-
----
-
-## 适合谁？
-
-这个项目比较适合：
-
-* 每天需要看很多岗位的人
-* 搜索条件比较固定的人
-* 想减少重复点击和复制粘贴的人
-* 想尝试用 AI 做岗位匹配的人
-* 想自己掌控投递，而不是完全自动投递的人
-
----
-
-## 最后提醒
-
-这是一个个人学习和求职效率工具，不是 BOSS 直聘官方产品。
-
-自动搜索、批量打招呼等行为可能触发平台限制，请控制频率，并自行承担相关风险。
-
-项目使用 Apache-2.0 License。
+- 仅供个人学习与求职使用；请遵守 BOSS 直聘服务条款与你所在地法律。
+- 自动化操作可能导致账号受限，**使用即视为自愿接受**。
+- Apache-2.0，详见 `LICENSE`。
