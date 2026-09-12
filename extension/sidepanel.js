@@ -64,7 +64,18 @@ export function addActivity(step, text) {
   }
 }
 
-export function setDecision(text) {
+export function friendlyError(msg) {
+  const m = String(msg ?? '');
+  if (/402|Insufficient Balance|欠费|余额不足/i.test(m)) {
+    return 'DeepSeek 账户余额不足：请到 platform.deepseek.com 充值后重试（当前所有 AI 步骤都会失败）。';
+  }
+  if (/401|invalid_api_key|Unauthorized/i.test(m)) return 'API Key 无效或已过期：请检查 .env 中的 DEEPSEEK_API_KEY。';
+  if (/timeout|aborted|ETIMEDOUT/i.test(m)) return 'AI 服务响应超时：请确认 npm run score:serve 正在运行且网络正常。';
+  if (/Failed to fetch|ECONNREFUSED|NetworkError/i.test(m)) return '连不上本机 AI 服务：请先运行 npm run score:serve。';
+  return m;
+}
+
+function setDecision(text) {
   $('decisionBox').textContent = text;
 }
 
@@ -104,7 +115,8 @@ function markPlan(i, status) {
     el.className = `status status-${status}`;
   }
   const done = session.searchedQueries.length;
-  $('planProgress').textContent = `${done} / ${session.plan?.queries.length ?? 0}`;
+  const total = session.allQueries?.length ?? session.plan?.queries.length ?? 0;
+  $('planProgress').textContent = `${done} / ${total}`;
 }
 
 function stop(message) {
@@ -156,14 +168,13 @@ export async function runAgent(rawGoal) {
   try {
     // 1) Plan
     $('stateText').textContent = 'planning';
-    addActivity('Planning', '正在生成搜索计划');
     const planRes = await fetch(`${AI_BASE}/plan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ goal: rawGoal }),
       signal: AbortSignal.timeout(60000),
     }).then((r) => r.json());
-    if (!planRes?.ok) throw new Error(`规划失败：${planRes?.error ?? 'AI 服务未就绪（请先 npm run score:serve）'}`);
+    if (!planRes?.ok) throw new Error(friendlyError(`规划失败：${planRes?.error ?? 'AI 服务未就绪（请先 npm run score:serve）'}`));
     const { goal, queries, warnings, successCriteria } = planRes.plan;
     session.goal = goal;
     session.plan = { goal, queries, successCriteria };
@@ -232,7 +243,7 @@ export async function runAgent(rawGoal) {
     showState('complete');
     $('stateText').textContent = 'complete';
   } catch (e) {
-    stop(`BOSS 页面需要人工处理，请完成后重新开始。\n原因：${e?.message ?? e}`);
+    stop(`已停止。\n原因：${friendlyError(e?.message ?? e)}`);
   }
 }
 
@@ -520,6 +531,22 @@ async function loadGreetText() {
 }
 
 // ---------------- 事件绑定 ----------------
+function resetRunUi() {
+  $('goalSummary').innerHTML = '';
+  $('planList').innerHTML = '';
+  $('planProgress').textContent = '';
+  $('decisionBox').textContent = '等待规划…';
+  $('statDiscovered').textContent = '0';
+  $('statQualified').textContent = '0';
+  $('statStrong').textContent = '0';
+  $('activityList').innerHTML = '';
+  $('activityList2').innerHTML = '';
+  $('approveBox').hidden = true;
+  $('completeError').hidden = true;
+  $('selectedCount').textContent = '0';
+  $('stateText').textContent = '';
+}
+
 async function onStart() {
   const goal = $('goalInput').value.trim();
   const err = $('idleError');
@@ -529,6 +556,7 @@ async function onStart() {
     err.hidden = false;
     return;
   }
+  resetRunUi();
   session.activity = [];
   session.stopped = false;
   session.replanCount = 0;
