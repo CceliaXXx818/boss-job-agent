@@ -84,10 +84,11 @@ export function escapeHtml(s) {
 }
 
 function setStats() {
-  const strong = session.scoredJobs.filter((j) => j.__ai?.ok && j.__ai.score >= 75).length;
-  $('statDiscovered').textContent = String(session.discoveredJobs.length);
-  $('statQualified').textContent = String(session.qualifiedJobs?.length ?? 0);
-  $('statStrong').textContent = String(strong);
+  const analyzed = session.scoredJobs.filter((j) => j.__ai?.ok).length;
+  $('statFound').textContent = String(session.discoveredJobs.length);
+  $('statPassed').textContent = String(session.qualifiedJobs?.length ?? 0);
+  $('statAnalyzed').textContent = String(analyzed);
+  $('statRecommended').textContent = String(strongMatches().length);
 }
 
 function renderGoalSummary(goal) {
@@ -103,20 +104,18 @@ function renderPlanList(queries) {
   $('planList').innerHTML = queries
     .map(
       (q, i) =>
-        `<li data-i="${i}"><span>${escapeHtml(q.cityName)} · ${escapeHtml(q.keyword)}${q.source === 'replan' ? '（Replan）' : ''}</span><span class="status" data-status="${i}">waiting</span></li>`,
+        `<li data-i="${i}"><span>${escapeHtml(q.cityName)} · ${escapeHtml(q.keyword)}${q.source === 'replan' ? '（Replan）' : ''}</span>` +
+        `<span class="status status-${q.status ?? 'waiting'}" data-status="${i}">${q.status ?? 'waiting'}</span></li>`,
     )
     .join('');
-  $('planProgress').textContent = '';
+  const total = session.allQueries?.length ?? 0;
+  const done = session.allQueries?.filter((q) => q.status === 'done').length ?? 0;
+  $('planProgress').textContent = `${done} / ${total}`;
 }
 function markPlan(i, status) {
-  const el = document.querySelector(`[data-status="${i}"]`);
-  if (el) {
-    el.textContent = status;
-    el.className = `status status-${status}`;
-  }
-  const done = session.searchedQueries.length;
-  const total = session.allQueries?.length ?? session.plan?.queries.length ?? 0;
-  $('planProgress').textContent = `${done} / ${total}`;
+  const q = session.allQueries?.[i];
+  if (q) q.status = status;
+  renderPlanList(session.allQueries ?? []);
 }
 
 function stop(message) {
@@ -333,6 +332,13 @@ async function runRound(tab, queries, planBaseIndex) {
           descFull: j.descFull || '',
         })),
         salaryMinK: session.goal.salaryMinK ?? undefined,
+        goalContext: {
+          cities: session.goal.cities.map((c) => c.name),
+          salaryMinK: session.goal.salaryMinK,
+          excludeTokens: session.goal.excludeTokens,
+          targetTitles: session.goal.targetTitles,
+          preferredSkills: session.goal.preferredSkills,
+        },
       }),
       signal: AbortSignal.timeout(180000),
     }).then((r) => r.json());
@@ -415,6 +421,25 @@ function renderShortlist(strong) {
     };
   }
   $('selectedCount').textContent = '0';
+  renderAgentSummary(sorted);
+}
+
+function renderAgentSummary(shortlist) {
+  const target = session.plan?.successCriteria?.targetQualifiedJobs ?? 10;
+  const strong = strongMatches().length;
+  const replanHad = session.replanCount > 0;
+  const replanQueries = (session.allQueries ?? []).filter((q) => q.source === 'replan');
+  const top = (shortlist ?? []).slice(0, 3).map((j) => `${j.title}（${j.__ai?.score}分）`).join('、') || '无';
+  const lines = [
+    `<b>目标</b>：${escapeHtml(session.goal?.rawGoal ?? '')}`,
+    `<b>结果</b>：Found ${session.discoveredJobs.length} → Passed Filters ${session.qualifiedJobs.length} → AI Analyzed ${session.scoredJobs.filter((j) => j.__ai?.ok).length} → Recommended ${strong}`,
+    `<b>目标达成</b>：${strong >= target ? `是（${strong} / ${target}）` : `否（${strong} / ${target}，已达 Replan 上限）`}`,
+    replanHad
+      ? `<span class="replan">Replan ×${session.replanCount}</span>：新增 ${replanQueries.map((q) => escapeHtml(q.keyword)).join('、')}`
+      : '未触发 Replan（首轮即达标）',
+    `<b>推荐优先</b>：${escapeHtml(top)}`,
+  ];
+  $('agentSummaryBody').innerHTML = lines.map((l) => `<div>${l}</div>`).join('');
 }
 
 // ---------------- Phase 5：用户批准后的打招呼（复用 content.js greetFull） ----------------
@@ -461,9 +486,12 @@ async function greetSelected() {
       addActivity('Greeting', `✓ ${job.title}（今日 ${done}/${cap}）`);
       await refreshQuota();
     } catch (e) {
+      // 注意：打招呼失败不改变整体状态——保持在 COMPLETE，只在卡片区提示，
+      // 避免把"已经跑完的搜索结果"整体丢掉。
       $('completeError').hidden = false;
-      $('completeError').textContent = `已停止：${e?.message ?? e}。请人工处理该岗位后重新开始。`;
-      stop(`打招呼中断：${e?.message ?? e}`);
+      $('completeError').className = 'box box-error';
+      $('completeError').textContent = `该岗位未完成发送：${friendlyError(e?.message ?? e)}。请人工在 BOSS 页面处理后再继续。`;
+      addActivity('Greeting', `停止在本岗位（用户可人工处理后重试）`);
       return;
     }
   }
@@ -536,9 +564,11 @@ function resetRunUi() {
   $('planList').innerHTML = '';
   $('planProgress').textContent = '';
   $('decisionBox').textContent = '等待规划…';
-  $('statDiscovered').textContent = '0';
-  $('statQualified').textContent = '0';
-  $('statStrong').textContent = '0';
+  $('statFound').textContent = '0';
+  $('statPassed').textContent = '0';
+  $('statAnalyzed').textContent = '0';
+  $('statRecommended').textContent = '0';
+  $('agentSummaryBody').textContent = '—';
   $('activityList').innerHTML = '';
   $('activityList2').innerHTML = '';
   $('approveBox').hidden = true;
@@ -574,7 +604,7 @@ function bind() {
   $('startBtn').onclick = onStart;
   $('stopBtn').onclick = () => {
     session.stopped = true;
-    $('stateText').textContent = '将在当前动作后暂停…';
+    $('stateText').textContent = 'pausing…';
   };
   $('retryBtn').onclick = () => showState('idle');
   $('restartBtn').onclick = () => showState('idle');

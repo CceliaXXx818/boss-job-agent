@@ -68,7 +68,30 @@ export function profilePrompt(c: CandidateProfileText): string {
   ].join('\n');
 }
 
-export function buildScoreSystem(c: CandidateProfileText): string {
+export interface ScoreGoalContext {
+  cities?: string[];
+  salaryMinK?: number | null;
+  excludeTokens?: string[];
+  targetTitles?: string[];
+  preferredSkills?: string[];
+}
+
+export function buildScoreSystem(c: CandidateProfileText, goalContext?: ScoreGoalContext): string {
+  const ctxLines: string[] = [];
+  if (goalContext) {
+    ctxLines.push('');
+    ctxLines.push('【本轮搜索目标（用户已经接受，不要把这些当作风险或扣分理由）】');
+    if (goalContext.cities?.length) ctxLines.push(`- 目标城市：${goalContext.cities.join('、')}（用户已确认接受）`);
+    if (goalContext.salaryMinK) ctxLines.push(`- 薪资下限：${goalContext.salaryMinK}K（低于此值的岗位已被规则拦掉，无需再提示薪资风险）`);
+    if (goalContext.excludeTokens?.length) ctxLines.push(`- 已排除：${goalContext.excludeTokens.join('、')}（命中项不会进入评分）`);
+    if (goalContext.targetTitles?.length) ctxLines.push(`- 目标岗位：${goalContext.targetTitles.join('、')}`);
+    if (goalContext.preferredSkills?.length) ctxLines.push(`- 偏好技能：${goalContext.preferredSkills.join('、')}`);
+    ctxLines.push('- 若仍需提示风险，只写"相对 JD 的真实差距"，不要重复上述已被用户接受的约束。');
+  }
+  return buildScoreSystemBase(c) + ctxLines.join('\n');
+}
+
+function buildScoreSystemBase(c: CandidateProfileText): string {
   return (
     '你是资深招聘匹配评审。基于候选人与【岗位资料】打分（0-100 整数）。评分规则：' +
     '方向/技能匹配与 JD 证据(Agent/大模型/LLM/RAG/客服/外呼/质检等)占权重最高；' +
@@ -100,7 +123,12 @@ export async function scoreJobWithModel(
   client: ModelClient,
   job: JobScoreInput,
   candidate: CandidateProfileText = DEFAULT_CANDIDATE,
+  goalContext?: ScoreGoalContext,
 ): Promise<ModelScore> {
-  const data = await client.chatJson(scoreSchema, buildScoreSystem(candidate), buildScoreUser(job));
+  const data = await client.chatJson(
+    scoreSchema,
+    buildScoreSystem(candidate, goalContext),
+    buildScoreUser(job),
+  );
   return data as ModelScore;
 }

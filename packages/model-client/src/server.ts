@@ -121,6 +121,13 @@ const server = createServer(async (req, res) => {
       jobs?: Array<JobScoreInput & { jobId: string }>;
       candidate?: Partial<CandidateProfileText>;
       salaryMinK?: number;
+      goalContext?: {
+        cities?: string[];
+        salaryMinK?: number | null;
+        excludeTokens?: string[];
+        targetTitles?: string[];
+        preferredSkills?: string[];
+      };
     };
     const jobs = body.jobs ?? [];
     if (!jobs.length) {
@@ -147,7 +154,7 @@ const server = createServer(async (req, res) => {
       }
       try {
         if (!client) client = new ModelClient();
-        const m = await scoreJobWithModel(client, input, candidate);
+        const m = await scoreJobWithModel(client, input, candidate, body.goalContext);
         const tier = tierOf(m.score);
         results.push({
           jobId: j.jobId,

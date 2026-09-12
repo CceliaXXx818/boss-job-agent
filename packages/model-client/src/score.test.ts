@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scoreSchema, tierOf, DECISION_LABEL } from './score';
+import { scoreSchema, tierOf, DECISION_LABEL, buildScoreSystem, DEFAULT_CANDIDATE } from './score';
 
 describe('A1 岗位决策评分：schema 与定档', () => {
   it('schema 字段齐备（score 0-100 + 证据性理由）', () => {
@@ -15,5 +15,27 @@ describe('A1 岗位决策评分：schema 与定档', () => {
     expect(tierOf(70)).toBe('review');
     expect(tierOf(50)).toBe('reject');
     expect(DECISION_LABEL.reject).toBe('建议放弃');
+  });
+});
+
+describe('V0.4 Score：带本轮 Goal context（避免把已接受约束当风险）', () => {
+  it('传入 goalContext 时，提示词声明城市/薪资为"用户已接受、不要当风险"', () => {
+    const sys = buildScoreSystem(DEFAULT_CANDIDATE, {
+      cities: ['杭州', '深圳'],
+      salaryMinK: 30,
+      excludeTokens: ['外包', '售前', '纯运营'],
+      targetTitles: ['AI产品经理'],
+      preferredSkills: ['Agent'],
+    });
+    expect(sys).toContain('本轮搜索目标');
+    expect(sys).toContain('不要把这些当作风险');
+    expect(sys).toContain('杭州');
+    expect(sys).toContain('30K');
+    expect(sys).toContain('不要重复上述已被用户接受的约束');
+  });
+
+  it('不传 goalContext 时保持原有提示词（向后兼容）', () => {
+    const sys = buildScoreSystem(DEFAULT_CANDIDATE);
+    expect(sys).not.toContain('本轮搜索目标');
   });
 });

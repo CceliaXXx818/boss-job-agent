@@ -30,6 +30,14 @@ body {
 .badge-bad { color: var(--bad); border-color: #f0c9c9; background: #fdf3f3; }
 
 .state { display: block; }
+.state[hidden] { display: none !important; }   /* 关键修复：hidden 必须真正隐藏 */
+details.activity { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
+details.activity > summary { cursor: pointer; font-weight: 600; font-size: 12px; color: var(--text); }
+details.activity > summary::marker { color: var(--muted); }
+.summary-card { border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; margin: 8px 0; background: #fbfcfe; }
+.summary-card h3 { margin: 0 0 6px; font-size: 13px; }
+.summary-card .replan { color: var(--warn); font-weight: 600; }
+.summary-card ul { margin: 4px 0 0 16px; padding: 0; }
 .hint { color: var(--muted); margin: 4px 0 8px; }
 
 textarea, input[type="number"] {

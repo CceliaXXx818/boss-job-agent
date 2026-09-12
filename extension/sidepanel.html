@@ -39,11 +39,12 @@
       <ul id="planList" class="plan-list"></ul>
     </div>
     <div class="card">
-      <h3>统计</h3>
+      <h3>Statistics</h3>
       <div class="stats">
-        <div><span id="statDiscovered">0</span><label>Discovered</label></div>
-        <div><span id="statQualified">0</span><label>Qualified</label></div>
-        <div><span id="statStrong">0</span><label>Strong Matches</label></div>
+        <div><span id="statFound">0</span><label>Found</label></div>
+        <div><span id="statPassed">0</span><label>Passed Filters</label></div>
+        <div><span id="statAnalyzed">0</span><label>AI Analyzed</label></div>
+        <div><span id="statRecommended">0</span><label>Recommended</label></div>
       </div>
     </div>
     <div class="card">
@@ -54,14 +55,18 @@
       <button id="stopBtn" class="btn-secondary">暂停</button>
       <span id="stateText" class="muted"></span>
     </div>
-    <div class="card">
-      <h3>Agent Activity</h3>
+    <details class="activity">
+      <summary>Agent Activity</summary>
       <ol id="activityList" class="timeline"></ol>
-    </div>
+    </details>
   </section>
 
   <!-- ===== COMPLETE ===== -->
   <section id="stateComplete" class="state" hidden>
+    <div class="summary-card" id="agentSummary">
+      <h3>Agent Summary</h3>
+      <div id="agentSummaryBody" class="muted small">—</div>
+    </div>
     <div class="card">
       <h3>Shortlist（score ≥ 75）</h3>
       <div id="jobCards" class="cards"></div>
@@ -86,10 +91,10 @@
       <button id="restartBtn" class="btn-secondary">重新开始</button>
       <span class="muted">已选择 <b id="selectedCount">0</b> 个岗位</span>
     </div>
-    <div class="card">
-      <h3>Agent Activity</h3>
+    <details class="activity">
+      <summary>Agent Activity</summary>
       <ol id="activityList2" class="timeline"></ol>
-    </div>
+    </details>
   </section>
 
   <!-- ===== STOPPED / ERROR ===== -->
