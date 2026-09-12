@@ -3,6 +3,7 @@ import type { ModelClient } from './client';
 import {
   SUPPORTED_CITIES,
   MAX_INITIAL_QUERIES,
+  MAX_REPLAN_QUERIES,
   DEFAULT_TARGET_QUALIFIED_JOBS,
   DEFAULT_QUALIFIED_SCORE_THRESHOLD,
 } from '../../../extension/core-logic.js';
@@ -149,4 +150,128 @@ export async function planJobSearch(
       qualifiedScoreThreshold: DEFAULT_QUALIFIED_SCORE_THRESHOLD,
     },
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// V0.4 Replan：只允许"新增 keyword"。城市/薪资/排除项/每日上限一律以原 goal 为准，
+// 模型即使返回这些字段也会被忽略；结果已达标或超过上限时直接 complete（不调模型）。
+// ---------------------------------------------------------------------------
+
+export const replanSchema = z.object({
+  status: z.enum(['continue', 'complete']),
+  reason: z.string(),
+  newKeywords: z.array(z.string()).default([]),
+});
+
+export type ReplanOutput = z.infer<typeof replanSchema>;
+
+export interface ReplanResultSummary {
+  discoveredCount: number;
+  qualifiedCount: number;
+  strongMatchCount: number;
+  topTitles: string[];
+  rejectedReasons: string[];
+}
+
+export function buildReplanSystem(goal: JobSearchGoal): string {
+  return [
+    '你是求职搜索策略评估器。根据"当前结果"判断是否需要补充搜索词，只输出 JSON。',
+    '',
+    '【严格限制】',
+    '- 只能新增搜索 keyword；禁止修改城市、薪资下限、排除项、每日上限',
+    '- 判定规则（必须严格遵守）：当「≥75 分数量」< 「目标高匹配岗位数」时，必须返回 status="continue" 并给出 2~4 个新关键词；',
+    '- 只有当 ≥75 分数量已达标时，才允许返回 status="complete" 且 newKeywords 为空；',
+    '- 新关键词要能带来新岗位（例如岗位名细分方向），不要重复已搜索组合',
+    '- 需要补充时，最多 4 个新关键词，优先高召回（例：AI平台产品经理、智能客服产品经理）',
+    '- 不允许用"放宽条件"（取消排除项/降低薪资）来凑数量',
+    '',
+    `当前固定条件（不可修改）：城市=${goal.cities.map((c) => c.name).join('、')}，薪资下限=${goal.salaryMinK ?? '不限'}K，排除项=${goal.excludeTokens.join('、') || '无'}`,
+    '输出 JSON：{"status":"continue|complete","reason":"给用户看的一句话说明","newKeywords":[]}',
+  ].join('\n');
+}
+
+export function buildReplanUser(input: {
+  goal: JobSearchGoal;
+  searchedQueries: SearchQuery[];
+  resultSummary: ReplanResultSummary;
+}): string {
+  const searched = input.searchedQueries.map((q) => `${q.cityName}·${q.keyword}`).join('；') || '无';
+  const rs = input.resultSummary;
+  return [
+    `目标高匹配岗位数：${input.goal.targetQualifiedJobs}`,
+    `已搜索组合：${searched}`,
+    `发现岗位：${rs.discoveredCount}`,
+    `通过硬过滤：${rs.qualifiedCount}`,
+    `≥75 分：${rs.strongMatchCount}`,
+    `高频岗位名：${rs.topTitles.join('、') || '无'}`,
+    `被排除原因：${rs.rejectedReasons.join('；') || '无'}`,
+    '',
+    '请输出唯一 JSON。',
+  ].join('\n');
+}
+
+/** 把新关键词按"城市×关键词"展开成查询，跳过已搜索组合，总数受 MAX_REPLAN_QUERIES 限制 */
+export function expandReplanQueries(
+  goal: JobSearchGoal,
+  searchedQueries: SearchQuery[],
+  newKeywords: string[],
+): { queries: SearchQuery[]; dropped: Array<{ keyword: string; reason: string }> } {
+  const searched = new Set(searchedQueries.map((q) => `${q.cityCode}::${q.keyword.trim().toLowerCase()}`));
+  const queries: SearchQuery[] = [];
+  const dropped: Array<{ keyword: string; reason: string }> = [];
+  const seenKeyword = new Set<string>();
+  for (const raw of newKeywords ?? []) {
+    const keyword = String(raw ?? '').trim();
+    if (!keyword) continue;
+    if (seenKeyword.has(keyword.toLowerCase())) {
+      dropped.push({ keyword, reason: '重复关键词' });
+      continue;
+    }
+    seenKeyword.add(keyword.toLowerCase());
+    let entirelySearched = true;
+    for (const city of goal.cities) {
+      const key = `${city.code}::${keyword.toLowerCase()}`;
+      if (searched.has(key)) continue;
+      entirelySearched = false;
+      if (queries.length >= MAX_REPLAN_QUERIES) {
+        dropped.push({ keyword, reason: `超过单次新增上限 ${MAX_REPLAN_QUERIES}` });
+        break;
+      }
+      searched.add(key);
+      queries.push({ cityName: city.name, cityCode: city.code, keyword, source: 'replan' });
+    }
+    if (entirelySearched) dropped.push({ keyword, reason: '已搜索过' });
+  }
+  return { queries, dropped };
+}
+
+/** 调用模型做一次 Replan（程序先做"是否还允许 Replan"的判断） */
+export async function replanJobSearch(
+  client: ModelClient,
+  input: { goal: JobSearchGoal; searchedQueries: SearchQuery[]; resultSummary: ReplanResultSummary; replanCount: number },
+): Promise<{ status: 'continue' | 'complete'; reason: string; newQueries: SearchQuery[] }> {
+  const target = input.goal.targetQualifiedJobs ?? DEFAULT_TARGET_QUALIFIED_JOBS;
+  // 程序侧护栏：达标 或 已达上限 → 直接结束，不消耗模型调用
+  if (input.resultSummary.strongMatchCount >= target) {
+    return { status: 'complete', reason: `已有 ${input.resultSummary.strongMatchCount} 个 ≥75 分岗位，达到目标 ${target}。`, newQueries: [] };
+  }
+  if ((input.replanCount ?? 0) >= 1) {
+    return { status: 'complete', reason: '已达到 Replan 上限（最多 1 次），本轮结束。', newQueries: [] };
+  }
+
+  const raw = (await client.chatJson(
+    replanSchema,
+    buildReplanSystem(input.goal),
+    buildReplanUser(input),
+  )) as ReplanOutput;
+
+  if (raw.status === 'complete') {
+    return { status: 'complete', reason: raw.reason || '模型判断无需补充搜索。', newQueries: [] };
+  }
+  const { queries } = expandReplanQueries(input.goal, input.searchedQueries, raw.newKeywords ?? []);
+  if (!queries.length) {
+    return { status: 'complete', reason: '没有可用的新搜索组合（可能都已搜索过），本轮结束。', newQueries: [] };
+  }
+  return { status: 'continue', reason: raw.reason || '补充搜索词以增加覆盖。', newQueries: queries };
 }

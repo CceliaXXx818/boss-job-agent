@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { DEFAULT_CANDIDATE, scoreJobWithModel, tierOf, DECISION_LABEL } from './score';
 import type { JobScoreInput } from './score';
 import { ModelClient } from './client';
-import { planJobSearch } from './job-plan';
+import { planJobSearch, replanJobSearch } from './job-plan';
 import type { CandidateProfileText } from './score';
 
 /**
@@ -87,6 +87,24 @@ const server = createServer(async (req, res) => {
       const client = new ModelClient();
       const plan = await planJobSearch(client, body.goal);
       res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, plan }));
+    } catch (e) {
+      res.writeHead(500).end(JSON.stringify({ ok: false, error: (e as Error).message }));
+    }
+    return;
+  }
+  if (req.method === 'POST' && req.url === '/replan') {
+    try {
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(c as Buffer);
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const client = new ModelClient();
+      const result = await replanJobSearch(client, {
+        goal: body.goal,
+        searchedQueries: body.searchedQueries ?? [],
+        resultSummary: body.resultSummary,
+        replanCount: body.replanCount ?? 0,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, ...result }));
     } catch (e) {
       res.writeHead(500).end(JSON.stringify({ ok: false, error: (e as Error).message }));
     }

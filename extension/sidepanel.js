@@ -24,10 +24,16 @@ export const session = {
   state: 'idle',
   goal: null,
   plan: null,
+  allQueries: [],
   searchedQueries: [],
+  discoveredMap: new Map(),
   discoveredJobs: [],
+  qualifiedJobs: [],
   detailJobs: [],
   scoredJobs: [],
+  fetchedDetailIds: new Set(),
+  filteredOut: 0,
+  excludeTokens: [],
   activity: [],
   replanCount: 0,
   stopped: false,
@@ -179,81 +185,133 @@ export async function runAgent(rawGoal) {
       candidateExclude = cfg?.candidate?.excludeTokens ?? [];
     } catch { /* 服务不可用时仅用 Goal 排除项 */ }
     const excludeTokens = mergeExcludeTokens(candidateExclude, goal.excludeTokens);
+    session.excludeTokens = excludeTokens;
 
-    // 3) 搜索（顺序执行，始终复用同一 BOSS 标签页）
+    // 3) 第一轮：Search → Filter → Detail → Score
     const tab = await findBossTab();
-    $('stateText').textContent = 'searching';
-    const discovered = new Map();
-    for (let qi = 0; qi < queries.length; qi++) {
-      if (session.stopped) return;
-      const q = queries[qi];
-      markPlan(qi, 'running');
-      try {
-        const res = await gotoSearch(tab.id, q);
-        let added = 0;
-        for (const row of res.rows) {
-          if (!discovered.has(row.jobId)) {
-            discovered.set(row.jobId, { ...row, fromQuery: `${q.cityName}·${q.keyword}` });
-            added++;
-          }
-        }
-        session.searchedQueries.push(q);
-        addActivity('Search', `${q.cityName} · ${q.keyword}：发现 ${res.count} 个岗位（新增 ${added}）`);
-        markPlan(qi, 'done');
-      } catch (e) {
-        markPlan(qi, 'failed');
-        addActivity('Search', `${q.cityName} · ${q.keyword} 失败：${e?.message ?? e}`);
-        throw e;
+    session.allQueries = [...queries];
+    renderPlanList(session.allQueries);
+    await runRound(tab, queries, 0);
+    if (session.stopped) return;
+
+    // 4) Evaluate（不足则 Replan 一次，最多一次）
+    const firstEval = evaluate();
+    if (!firstEval.enough && session.replanCount < MAX_REPLAN && !session.stopped) {
+      $('stateText').textContent = 'replanning';
+      addActivity('Replan', '正在评估是否需要补充搜索词');
+      const replanRes = await fetch(`${AI_BASE}/replan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          goal,
+          searchedQueries: session.searchedQueries,
+          resultSummary: buildResultSummary(),
+          replanCount: session.replanCount,
+        }),
+        signal: AbortSignal.timeout(90000),
+      }).then((r) => r.json());
+      if (replanRes?.ok && replanRes.status === 'continue' && (replanRes.newQueries ?? []).length) {
+        session.replanCount += 1;
+        addActivity('Replan', `${replanRes.reason}｜新增：${replanRes.newQueries.map((q) => q.keyword).join('、')}`);
+        setDecision(replanRes.reason);
+        const base = session.allQueries.length;
+        session.allQueries = [...session.allQueries, ...replanRes.newQueries];
+        renderPlanList(session.allQueries);
+        await runRound(tab, replanRes.newQueries, base);
+        if (session.stopped) return;
+        evaluate({ afterReplan: true });
+      } else {
+        addActivity('Replan', `无需补充：${replanRes?.reason ?? '本轮结束'}`);
+        setDecision(replanRes?.reason ?? firstEval.text);
       }
     }
-    session.discoveredJobs = [...discovered.values()];
-    setStats();
 
-    // 4) Hard filter（规则优先级高于任何模型分数）
-    $('stateText').textContent = 'filtering';
-    const qualified = [];
-    let removed = 0;
-    for (const j of session.discoveredJobs) {
-      const r = hardFilter(j, excludeTokens);
-      if (r.pass) qualified.push(j);
-      else removed++;
-    }
-    session.qualifiedJobs = qualified;
-    session.fetchedDetailIds = new Set();
-    addActivity('Filter', `移除 ${removed} 个（命中排除词），保留 ${qualified.length} 个`);
-    setStats();
+    // 5) Shortlist
+    const strong = strongMatches();
+    renderShortlist(strong);
+    showState('complete');
+    $('stateText').textContent = 'complete';
+  } catch (e) {
+    stop(`BOSS 页面需要人工处理，请完成后重新开始。\n原因：${e?.message ?? e}`);
+  }
+}
 
-    // 5) 详情（只抓 Top N，且只抓没抓过的）
-    $('stateText').textContent = 'fetching_details';
-    const targets = selectDetailTargets(qualified, session.fetchedDetailIds, DETAIL_LIMIT);
-    addActivity('Detail', `选取 ${targets.length} 个岗位抓详情（上限 ${DETAIL_LIMIT}）`);
-    let consecutiveFail = 0;
-    for (const job of targets) {
-      if (session.stopped) return;
-      try {
-        const detail = await fetchDetail(tab.id, job);
-        session.fetchedDetailIds.add(job.jobId);
-        session.detailJobs.push({
-          ...job,
-          ...detail,
-          expEdu: detail?.expEdu?.length ? detail.expEdu : String(job.tags ?? '').split('|').filter(Boolean),
-        });
-        consecutiveFail = 0;
-      } catch (e) {
-        consecutiveFail++;
-        addActivity('Detail', `${job.title} 抓取失败：${e?.message ?? e}`);
-        if (consecutiveFail >= 3) throw new Error('连续 3 个详情抓取失败，BOSS 页面可能需要人工处理');
+// ---------------- Round：Search → Filter → Detail → Score ----------------
+async function runRound(tab, queries, planBaseIndex) {
+  $('stateText').textContent = 'searching';
+  for (let i = 0; i < queries.length; i++) {
+    if (session.stopped) return;
+    const q = queries[i];
+    markPlan(planBaseIndex + i, 'running');
+    const res = await gotoSearch(tab.id, q);
+    let added = 0;
+    for (const row of res.rows) {
+      if (!session.discoveredMap.has(row.jobId)) {
+        session.discoveredMap.set(row.jobId, { ...row, fromQuery: `${q.cityName}·${q.keyword}` });
+        added++;
       }
     }
-    addActivity('Detail', `详情完成 ${session.detailJobs.length} / ${targets.length}`);
+    session.searchedQueries.push(q);
+    addActivity('Search', `${q.cityName} · ${q.keyword}：发现 ${res.count} 个岗位（新增 ${added}）`);
+    markPlan(planBaseIndex + i, 'done');
+  }
+  session.discoveredJobs = [...session.discoveredMap.values()];
+  setStats();
 
-    // 6) AI Score（复用 /score 与 candidate.json）
+  // Filter（规则优先级高于任何模型分数）
+  $('stateText').textContent = 'filtering';
+  const passedIds = new Set(session.qualifiedJobs.map((j) => j.jobId));
+  const qualified = [];
+  let removedThisRound = 0;
+  for (const j of session.discoveredJobs) {
+    const r = hardFilter(j, session.excludeTokens);
+    if (r.pass) qualified.push(j);
+    else if (!passedIds.has(j.jobId)) removedThisRound++;
+  }
+  session.filteredOut += removedThisRound;
+  session.qualifiedJobs = qualified;
+  addActivity('Filter', `本轮移除 ${removedThisRound} 个（命中排除词），累计保留 ${qualified.length} 个`);
+  setStats();
+
+  // Detail（只抓 Top N 且未抓过的）
+  $('stateText').textContent = 'fetching_details';
+  const targets = selectDetailTargets(qualified, session.fetchedDetailIds, DETAIL_LIMIT);
+  if (!targets.length) {
+    addActivity('Detail', '没有需要新抓详情的岗位');
+    return;
+  }
+  addActivity('Detail', `选取 ${targets.length} 个岗位抓详情（上限 ${DETAIL_LIMIT}）`);
+  let consecutiveFail = 0;
+  const newlyFetched = [];
+  for (const job of targets) {
+    if (session.stopped) return;
+    try {
+      const detail = await fetchDetail(tab.id, job);
+      session.fetchedDetailIds.add(job.jobId);
+      const merged = {
+        ...job,
+        ...detail,
+        expEdu: detail?.expEdu?.length ? detail.expEdu : String(job.tags ?? '').split('|').filter(Boolean),
+      };
+      session.detailJobs.push(merged);
+      newlyFetched.push(merged);
+      consecutiveFail = 0;
+    } catch (e) {
+      consecutiveFail++;
+      addActivity('Detail', `${job.title} 抓取失败：${e?.message ?? e}`);
+      if (consecutiveFail >= 3) throw new Error('连续 3 个详情抓取失败，BOSS 页面可能需要人工处理');
+    }
+  }
+  addActivity('Detail', `本轮详情完成 ${newlyFetched.length} / ${targets.length}`);
+
+  // Score（只对新增详情调用，避免重复花费）
+  if (newlyFetched.length) {
     $('stateText').textContent = 'scoring';
     const scoreRes = await fetch(`${AI_BASE}/score`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        jobs: session.detailJobs.map((j) => ({
+        jobs: newlyFetched.map((j) => ({
           jobId: j.jobId,
           title: j.title || j.name || '',
           company: j.company || '',
@@ -263,32 +321,50 @@ export async function runAgent(rawGoal) {
           companyMeta: j.companyMeta || [],
           descFull: j.descFull || '',
         })),
-        salaryMinK: goal.salaryMinK ?? undefined,
+        salaryMinK: session.goal.salaryMinK ?? undefined,
       }),
       signal: AbortSignal.timeout(180000),
     }).then((r) => r.json());
     const byId = new Map((scoreRes?.results ?? []).map((r) => [r.jobId, r]));
-    session.scoredJobs = session.detailJobs.map((j) => ({ ...j, __ai: byId.get(j.jobId) }));
-    const strong = session.scoredJobs.filter((j) => j.__ai?.ok && j.__ai.score >= 75);
-    addActivity('Score', `${strong.length} 个岗位得分 ≥ 75`);
-    setStats();
-
-    // 7) Evaluate（Replan 在 Phase 4 接入）
-    $('stateText').textContent = 'evaluating';
-    const target = successCriteria.targetQualifiedJobs;
-    setDecision(
-      `当前 ${strong.length} 个 ≥75 分岗位，目标 ${target} 个。` +
-        (strong.length >= target ? '已达到目标。' : '低于目标（V0.4 Phase4 将自动 Replan 一次）。'),
-    );
-    addActivity('Evaluate', `目标 ${target}，当前 ${strong.length}`);
-
-    // 8) Shortlist
-    renderShortlist(strong);
-    showState('complete');
-    $('stateText').textContent = 'complete';
-  } catch (e) {
-    stop(`BOSS 页面需要人工处理，请完成后重新开始。\n原因：${e?.message ?? e}`);
+    for (const j of newlyFetched) {
+      const ai = byId.get(j.jobId);
+      const idx = session.scoredJobs.findIndex((x) => x.jobId === j.jobId);
+      const merged = { ...j, __ai: ai };
+      if (idx >= 0) session.scoredJobs[idx] = merged;
+      else session.scoredJobs.push(merged);
+    }
+    addActivity('Score', `本轮评分 ${newlyFetched.length} 个，≥75 分共 ${strongMatches().length} 个`);
   }
+  setStats();
+}
+
+function strongMatches() {
+  return session.scoredJobs.filter((j) => j.__ai?.ok && j.__ai.score >= 75);
+}
+
+function buildResultSummary() {
+  return {
+    discoveredCount: session.discoveredJobs.length,
+    qualifiedCount: session.qualifiedJobs.length,
+    strongMatchCount: strongMatches().length,
+    topTitles: session.qualifiedJobs.map((j) => j.title).slice(0, 8),
+    rejectedReasons: [`命中排除词后累计移除 ${session.filteredOut} 个`],
+  };
+}
+
+function evaluate({ afterReplan = false } = {}) {
+  $('stateText').textContent = 'evaluating';
+  const target = session.plan?.successCriteria?.targetQualifiedJobs ?? 10;
+  const strong = strongMatches().length;
+  const enough = strong >= target;
+  const text = enough
+    ? `当前 ${strong} 个 ≥75 分岗位，达到目标 ${target} 个，进入 Shortlist。`
+    : afterReplan
+      ? `补充搜索后共 ${strong} 个 ≥75 分岗位，仍低于目标 ${target} 个；已达 Replan 上限（最多 1 次），本轮结束。`
+      : `当前仅找到 ${strong} 个 ≥75 分岗位，低于目标 ${target} 个。`;
+  setDecision(text);
+  addActivity('Evaluate', `目标 ${target}，当前 ${strong}`);
+  return { enough, strong, target, text };
 }
 
 function renderShortlist(strong) {

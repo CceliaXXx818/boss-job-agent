@@ -1,0 +1,32 @@
+{
+ "replan-insufficient": {
+  "status": "continue",
+  "reason": "当前≥75分岗位仅4个，未达到目标10个，需要补充搜索词以发现更多高匹配岗位。",
+  "newQueries": [
+   {
+    "cityName": "杭州",
+    "cityCode": "101210100",
+    "keyword": "AI平台产品经理",
+    "source": "replan"
+   },
+   {
+    "cityName": "深圳",
+    "cityCode": "101280600",
+    "keyword": "AI平台产品经理",
+    "source": "replan"
+   },
+   {
+    "cityName": "杭州",
+    "cityCode": "101210100",
+    "keyword": "智能客服产品经理",
+    "source": "replan"
+   },
+   {
+    "cityName": "深圳",
+    "cityCode": "101280600",
+    "keyword": "智能客服产品经理",
+    "source": "replan"
+   }
+  ]
+ }
+}
