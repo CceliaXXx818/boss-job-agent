@@ -1,6 +1,8 @@
 // sidepanel.js —— Job Agent 主界面（ES module）
 // 原则：LLM 决定 WHAT（Plan/Replan），core-logic 决定规则允许范围，content.js 决定 HOW（DOM 动作）。
 import {
+  resolveBossContext,
+  detectCityConflict,
   canGreet,
   mergeExcludeTokens,
   hardFilter,
@@ -126,6 +128,30 @@ function stop(message) {
 }
 
 // ---------------- BOSS 浏览器工具（复用 content.js 已验证链路） ----------------
+// ---------------- V0.4.1 Browser Context：当前 BOSS 城市 ----------------
+async function getCurrentBossContext() {
+  const badge = $('cityBadge');
+  let ctx = null;
+  try {
+    const tabs = await chrome.tabs.query({ url: ['https://*.zhipin.com/*'] });
+    const tab = tabs.find((t) => /\/web\/geek\//.test(t.url)) ?? tabs[0];
+    if (tab) {
+      const page = await chrome.tabs.sendMessage(tab.id, { type: 'bossContext' });
+      ctx = resolveBossContext(page);
+    }
+  } catch { /* 页面未就绪 */ }
+  if (ctx) {
+    session.bossContext = ctx;
+    badge.textContent = `📍 当前城市：${ctx.cityName}`;
+    badge.className = 'badge badge-ok';
+  } else {
+    session.bossContext = null;
+    badge.textContent = '📍 当前城市：未识别';
+    badge.className = 'badge badge-bad';
+  }
+  return ctx;
+}
+
 async function findBossTab() {
   const tabs = await chrome.tabs.query({ url: ['https://*.zhipin.com/*'] });
   const pick = tabs.find((t) => /\/web\/geek\//.test(t.url)) ?? tabs[0];
@@ -165,6 +191,17 @@ async function fetchDetail(tabId, job) {
 // ---------------- Agent Loop（Phase 3：Goal→Plan→Search→Filter→Detail→Score→Results） ----------------
 export async function runAgent(rawGoal) {
   try {
+    // 0) Browser Context：每次开始都重新读取当前 BOSS 城市（不使用旧缓存）
+    const bossContext = await getCurrentBossContext();
+    if (!bossContext) {
+      throw new Error('无法识别当前 BOSS 城市，请先打开 BOSS 岗位列表页并选择城市后重新开始。');
+    }
+    if (bossContext.cityCode && bossContext.cityName === `城市${bossContext.cityCode}`) {
+      addActivity('Context', `已读取当前城市 code=${bossContext.cityCode}（页面未识别到城市名）`);
+    } else {
+      addActivity('Context', `当前 BOSS 城市：${bossContext.cityName}（${bossContext.cityCode || '无 code'}）`);
+    }
+
     // 1) Plan
     $('stateText').textContent = 'planning';
     const planRes = await fetch(`${AI_BASE}/plan`, {
@@ -636,6 +673,7 @@ function bind() {
 async function init() {
   bind();
   await Promise.all([checkBoss(), checkAi()]);
+  await getCurrentBossContext();
   const st = await chrome.storage.local.get('dailyCap');
   if (st.dailyCap) $('capInput').value = st.dailyCap;
   await refreshQuota();
@@ -644,4 +682,4 @@ async function init() {
 
 init();
 
-export { AI_BASE, todayKey, checkBoss, checkAi, findBossTab, gotoSearch, fetchDetail };
+export { AI_BASE, todayKey, checkBoss, checkAi, getCurrentBossContext, findBossTab, gotoSearch, fetchDetail };

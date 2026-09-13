@@ -409,12 +409,40 @@ async function detailScrapeFull() {
   }
 }
 
+
+// ---------- V0.4.1 Browser Context：从当前 BOSS 页面读取真实城市信息 ----------
+function bossContext() {
+  const url = location.href;
+  const u = new URL(url);
+  const codeFromUrl = u.searchParams.get('city') || u.searchParams.get('cityCode') || '';
+  // DOM 候选项：优先 class 含 city 的可见叶子文本
+  const candidates = [];
+  for (const el of document.querySelectorAll('[class*="city"],[class*="City"],[data-city]')) {
+    const t = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const cls = String(el.className ?? '').slice(0, 60);
+    const r = el.getBoundingClientRect();
+    if (!t || t.length > 12 || r.width <= 0) continue;
+    candidates.push({ text: t, cls, y: Math.round(r.y) });
+  }
+  candidates.sort((a, b) => a.y - b.y);
+  return {
+    url,
+    title: document.title,
+    codeFromUrl,
+    domCandidates: candidates.slice(0, 8),
+    // 顶部可见文字，供无候选时人工校准
+    topTexts: visibleLeafTexts().slice(0, 20),
+  };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'scrape') {
     const rows = cardRows();
     sendResponse({ ok: true, url: location.href, count: rows.length, rows });
   } else if (msg?.type === 'greet') {
     sendResponse({ ok: true, ...clickGreet(msg.labels ?? []) });
+  } else if (msg?.type === 'bossContext') {
+    sendResponse({ ok: true, ...bossContext() });
   } else if (msg?.type === 'detailScrape') {
     detailScrapeFull().then((r) => sendResponse({ ok: true, ...r }));
     return true; // 异步（滚动后二次读取）

@@ -1,10 +1,63 @@
 // core-logic.js —— Job Agent 的纯逻辑层（无 DOM、无 chrome API，可被单测直接覆盖）
 // 设计原则：LLM 决定 WHAT，这里决定"规则上允许/不允许"，浏览器层决定 HOW。
 
-export const SUPPORTED_CITIES = Object.freeze({
-  杭州: '101210100',
-  深圳: '101280600',
+/** fallback 映射（不再作为前置白名单；仅用于"有 code 但页面读不到名字"时兜底） */
+export const KNOWN_CITY_CODES = Object.freeze({
+  101020100: '上海',
+  101010100: '北京',
+  101210100: '杭州',
+  101280600: '深圳',
+  101280100: '广州',
+  101270100: '成都',
+  101190100: '南京',
+  101200100: '武汉',
+  101190400: '苏州',
+  101110100: '西安',
 });
+
+/** name → code（由 KNOWN_CITY_CODES 反查；V0.4.1 起仅作 fallback，不再是搜索白名单） */
+export const CITY_NAME_TO_CODE = Object.freeze(
+  Object.fromEntries(Object.entries(KNOWN_CITY_CODES).map(([code, name]) => [name, code])),
+);
+
+/** @deprecated V0.4.1：保留旧名以免破坏引用；语义已变为"已知城市映射"，不再拦截搜索 */
+export const SUPPORTED_CITIES = CITY_NAME_TO_CODE;
+
+const CITY_TEXT_RE = /^[\u4e00-\u9fa5]{2,8}(市|省|自治州)?$/;
+
+/**
+ * 解析 Browser Context（纯函数，便于单测）。
+ * 优先级：URL 中的 city code（权威）→ 已知 code 映射名称 → DOM 城市文本。
+ * 返回 null 表示无法识别（调用方应 STOPPED 提示用户）。
+ */
+export function resolveBossContext(page, knownCodes = KNOWN_CITY_CODES) {
+  if (!page) return null;
+  const code = String(page.codeFromUrl ?? '').trim();
+  const domTexts = (page.domCandidates ?? [])
+    .map((c) => String(c.text ?? '').trim())
+    .filter((t) => CITY_TEXT_RE.test(t));
+  // DOM 文本里优先"纯城市名"（不含"切换/城市"等词）
+  const domName = domTexts.find((t) => !/切换|选择|城市|热门|更多/.test(t)) ?? '';
+  let cityName = '';
+  if (code && knownCodes[code]) cityName = knownCodes[code];
+  if (!cityName && domName) cityName = domName.replace(/市$/, '');
+  if (!cityName && code) cityName = `城市${code}`;
+  if (!code && !cityName) return null;
+  const pageType = /\/job_detail\//.test(page.url ?? '')
+    ? 'job-detail'
+    : /\/web\/geek\//.test(page.url ?? '')
+      ? 'job-list'
+      : 'unknown';
+  return { platform: 'boss', cityName, cityCode: code || '', pageType, url: page.url ?? '' };
+}
+
+/** Goal 中提到的城市与当前 BOSS 城市是否冲突（Case C） */
+export function detectCityConflict(mentionedCities, contextCityName) {
+  const others = (mentionedCities ?? [])
+    .map((c) => String(c ?? '').trim().replace(/市$/, ''))
+    .filter((c) => c && c !== String(contextCityName ?? '').trim().replace(/市$/, ''));
+  return others.length ? { conflict: true, others } : { conflict: false, others: [] };
+}
 
 export const DEFAULT_TARGET_QUALIFIED_JOBS = 10;
 export const DEFAULT_QUALIFIED_SCORE_THRESHOLD = 75;
