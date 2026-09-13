@@ -191,6 +191,16 @@ const server = createServer(async (req, res) => {
   }
 });
 
+server.on('error', (e: NodeJS.ErrnoException) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`[score:serve] 端口 ${PORT} 已被占用：很可能上一个 score:serve 还在运行（且是旧代码）。`);
+    console.error(`[score:serve] 解决方法： lsof -ti :${PORT} | xargs kill   然后重新运行 npm run score:serve`);
+    console.error(`[score:serve] 或用其它端口： SCORE_PORT=8800 npm run score:serve（同时需把扩展里的 AI 地址改成 8800）`);
+    process.exit(1);
+  }
+  throw e;
+});
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[score:serve] 本机打分服务 http://127.0.0.1:${PORT}（只监听本机）`);
   console.log(`[score:serve] 画像来源：${existsSync(CANDIDATE_FILE) ? CANDIDATE_FILE : '代码内默认（可建 config/candidate.json 自定义）'}`);
