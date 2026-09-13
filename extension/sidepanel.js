@@ -1003,8 +1003,23 @@ function bind() {
     $('completeError').hidden = true;
     $('approveBtn').disabled = true;
     try {
-      await chrome.storage.local.set({ greetText: $('greetText').value });
+      // Review 的输入框就是话术的唯一编辑面：发送前把它固化进 settings，
+      // 避免"界面里改了、实际发的是旧模板"这种不一致。
+      const typed = $('greetText').value;
+      if (typed.trim() !== session.settings?.greetingStrategy?.template) {
+        const next = await saveSettings({
+          ...session.settings,
+          greetingStrategy: { ...session.settings.greetingStrategy, mode: 'template', template: typed },
+        });
+        session.settings = next;
+        renderTemplateForm();
+      }
+      await chrome.storage.local.set({ greetText: session.settings.greetingStrategy.template });
       await greetSelected();
+    } catch (e) {
+      $('completeError').hidden = false;
+      $('completeError').className = 'box box-error';
+      $('completeError').textContent = `话术不可用：${e?.message ?? e}`;
     } finally {
       $('approveBtn').disabled = false;
     }
