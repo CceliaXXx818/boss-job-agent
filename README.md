@@ -389,6 +389,7 @@ npm run scan:redline
 | [`docs/PRD-v0.5.md`](docs/PRD-v0.5.md) | 当前 V0.5 完整产品需求与验收标准 |
 | [`docs/DESIGN-v0.5.md`](docs/DESIGN-v0.5.md) | 当前实现设计、状态机、事件、幂等、调度、测试 |
 | [`docs/INDEX.md`](docs/INDEX.md) | 文档阅读顺序与代码入口 |
+| [`docs/PM-INTERVIEW-STORY.md`](docs/PM-INTERVIEW-STORY.md) | 面向产品经理面试的项目讲法（故事脚本、决策依据、指标口径、问答防御） |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本变化与真实事故修复 |
 | [`ROADMAP.md`](ROADMAP.md) | 下一步路线 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 如何贡献 |

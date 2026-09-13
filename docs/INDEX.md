@@ -10,7 +10,8 @@
 | 2 | [`AGENT-ARCHITECTURE.md`](AGENT-ARCHITECTURE.md) | **用了哪些 Agent 架构模式**、为什么这么选、没用什么、学习路线 |
 | 3 | [`PRD-v0.5.md`](PRD-v0.5.md) | 完整需求（功能需求编号化 + 验收标准 + 非目标） |
 | 4 | [`DESIGN-v0.5.md`](DESIGN-v0.5.md) | 完整设计（模块地图、11 个 step、事件目录、状态机、幂等、调度、测试、扩展点） |
-| 5 | [`../CHANGELOG.md`](../CHANGELOG.md) | 每个版本做了什么 |
+| 5 | [`PM-INTERVIEW-STORY.md`](PM-INTERVIEW-STORY.md) | 要拿去面试讲这个故事时的脚本与弹药（含指标口径与问答防御） |
+| 6 | [`../CHANGELOG.md`](../CHANGELOG.md) | 每个版本做了什么 |
 
 ## 2. 想动手改代码
 
