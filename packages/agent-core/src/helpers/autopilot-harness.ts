@@ -49,6 +49,9 @@ export type HarnessOptions = {
   initialStorage?: Record<string, unknown>;
   now?: Date;
   greetResults?: Array<{ ok: boolean; error?: string; risk?: string; reason?: string }>;
+  /** 让第 N 次 /score 调用失败（从 1 开始计数），用于测试评分失败与 Resume 后的续评 */
+  scoreFailAt?: number[];
+  scoreError?: string;
   browserFails?: { search?: number; detail?: number };
   context?: Record<string, unknown> | null;
   searchRows?: (query: { keyword: string; round?: number }) => ReturnType<typeof makeJob>[];
@@ -84,11 +87,13 @@ export function createHarness(opts: HarnessOptions = {}) {
     plan: 0,
     replan: 0,
     score: 0,
+    scoreBatches: [] as string[][],
     pause: [] as string[],
   };
 
   let current = opts.now ? new Date(opts.now) : new Date('2026-09-13T10:00:00');
   const greetResults = [...(opts.greetResults ?? [])];
+  const scoreFailAt = new Set(opts.scoreFailAt ?? []);
   let searchFailsLeft = opts.browserFails?.search ?? 0;
   let detailFailsLeft = opts.browserFails?.detail ?? 0;
   const replanResponses = [...(opts.replanResponses ?? [])];
@@ -177,6 +182,10 @@ export function createHarness(opts: HarnessOptions = {}) {
     },
     async scoreJobs({ jobs: list }: { jobs: Array<{ jobId: string }> }) {
       calls.score++;
+      calls.scoreBatches.push(list.map((j) => j.jobId));
+      if (scoreFailAt.has(calls.score)) {
+        return { ok: false, results: [], error: opts.scoreError ?? '模拟评分服务不可用' };
+      }
       const byId = new Map(jobs.map((j) => [j.jobId, j]));
       return {
         ok: true,

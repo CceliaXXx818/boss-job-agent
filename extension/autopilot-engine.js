@@ -58,6 +58,12 @@ export const MAX_SAFE_RETRY = 1;
 export const FAILURE_THRESHOLD = 2;
 /** 一轮内最多创建多少条 Action（防止一次创建过多） */
 export const MAX_ACTIONS_PER_ROUND = 20;
+/**
+ * 单次 /score 的批量大小。
+ * 15 个岗位一次打分会让模型调用耗时接近 1 分钟，MV3 Service Worker 随时可能被回收；
+ * 拆成小批可以让每个 tick 的工作更短、并把已得分数立即持久化（重试不重复付费）。
+ */
+export const SCORE_BATCH_SIZE = 5;
 
 const DEFAULT_TARGET_QUALIFIED = 10;
 const AI_UNAVAILABLE = RISK_REASONS.AI_SERVICE_UNAVAILABLE;
@@ -573,23 +579,41 @@ export function createAutopilotEngine(deps) {
     if (!buffer.length) {
       return { patch: { scoredBuffer: [] }, nextStep: AUTOPILOT_STEPS.EVALUATE };
     }
+    // 只对"还没评过分"的岗位调用模型：SW 中途被回收 / 暂停后 Resume 时不会重复花钱
+    const already = new Set((rt.scoredBuffer ?? []).map((j) => j.jobId));
+    const pending = buffer.filter((j) => !already.has(j.jobId));
+    if (!pending.length) {
+      return { nextStep: AUTOPILOT_STEPS.EVALUATE };
+    }
+
+    const chunk = pending.slice(0, SCORE_BATCH_SIZE);
     const res = await deps.ai.scoreJobs({
-      jobs: buffer.map((j) => buildScorePayload(j)),
+      jobs: chunk.map((j) => buildScorePayload(j)),
       salaryMinK: rt.goal?.salaryMinK,
       goalContext: buildGoalContext(rt.goal ?? {}),
     });
-      if (!res?.ok) return { pause: res?.error ?? '评分失败', code: AI_UNAVAILABLE };
-    const scored = attachScores(buffer, res.results ?? []);
+    if (!res?.ok) {
+      return {
+        pause: `评分失败：${res?.error ?? 'AI 服务返回异常'}（已评 ${already.size} 个，剩余 ${pending.length} 个）`,
+        code: AI_UNAVAILABLE,
+      };
+    }
+
+    const scored = attachScores(chunk, res.results ?? []);
     await deps.records.recordJobsScored({ jobs: scored, mode: 'autopilot', at: now() });
-    const counts = scored.filter((j) => j.__ai?.ok).length;
-    activity(`Score：本轮评分 ${counts} 个，≥75 分共 ${strongMatches(scored).length} 个`);
+    const merged = [...(rt.scoredBuffer ?? []).filter((j) => !chunk.some((c) => c.jobId === j.jobId)), ...scored];
+    const counts = merged.filter((j) => j.__ai?.ok).length;
+    const remaining = pending.length - chunk.length;
+    activity(
+      `Score：本批 ${scored.filter((j) => j.__ai?.ok).length} 个${remaining > 0 ? `（还有 ${remaining} 个待评）` : ''}，累计 ≥75 分 ${strongMatches(merged).length} 个`,
+    );
     return {
       patch: {
-        scoredBuffer: scored,
+        scoredBuffer: merged,
         currentRoundStats: { ...rt.currentRoundStats, analyzedCount: counts },
-        log: appendLog(rt, `Score：${counts} 个`),
+        log: appendLog(rt, `Score：本批 ${chunk.length} 个（累计 ${counts}）`),
       },
-      nextStep: AUTOPILOT_STEPS.EVALUATE,
+      nextStep: remaining > 0 ? AUTOPILOT_STEPS.SCORE : AUTOPILOT_STEPS.EVALUATE,
     };
   }
 
