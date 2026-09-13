@@ -107,3 +107,22 @@ input[type="number"] { width: 70px; }
 
 .muted { color: var(--muted); }
 .small { font-size: 11px; }
+
+/* ===== V0.5 Phase 1：模式/设置/授权 ===== */
+.mode-card .mode-opt { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+.mode-card .mode-opt input { margin-top: 3px; }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin: 6px 0; }
+.settings-grid label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+.settings-grid label.inline { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+.settings-grid input[type="number"], .settings-grid input[type="text"] { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; font: inherit; }
+.overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: center; justify-content: center; padding: 12px; z-index: 50; }
+.overlay[hidden] { display: none !important; }
+.modal { background: #fff; border-radius: 10px; padding: 12px 14px; max-width: 420px; width: 100%; max-height: 88vh; overflow: auto; }
+.modal h3 { margin: 0 0 6px; font-size: 14px; }
+.modal ul { margin: 4px 0 8px 16px; padding: 0; }
+.modal blockquote { margin: 4px 0 8px; padding: 6px 8px; background: var(--chip); border-left: 3px solid var(--primary); border-radius: 4px; }
+.mode-badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--chip); color: var(--muted); }
+.mode-badge.on { color: #0f6b2f; background: #e9f8ee; }
+.policy-line { padding: 2px 0; }
+.policy-allow { color: var(--ok); }
+.policy-deny { color: var(--bad); }

@@ -15,6 +15,70 @@
     </div>
   </header>
 
+
+  <!-- ===== MODE + SETTINGS（V0.5 Phase 1） ===== -->
+  <div class="card mode-card">
+    <h3>运行模式</h3>
+    <label class="mode-opt">
+      <input type="radio" name="runMode" value="review" id="modeReview" checked />
+      <span><b>Review Mode</b><br /><span class="muted small">Agent 帮你搜索和推荐岗位，联系招聘者前需要你确认。</span></span>
+    </label>
+    <label class="mode-opt">
+      <input type="radio" name="runMode" value="autopilot" id="modeAutopilot" />
+      <span><b>Autopilot</b><br /><span class="muted small">在你设置的规则范围内自动搜索、联系和处理明确的简历请求。</span></span>
+    </label>
+    <div id="autopilotState" class="muted small" hidden></div>
+  </div>
+
+  <details class="activity" id="autopilotSettingsBox">
+    <summary>Autopilot 设置</summary>
+    <div class="settings-grid">
+      <label>自动联系分数阈值 <input id="setMinScore" type="number" min="0" max="100" /></label>
+      <label>每日联系上限 <input id="setDailyCap" type="number" min="1" max="100" /></label>
+      <label>每轮候选目标 <input id="setBatchTarget" type="number" min="1" max="50" /></label>
+      <label>最大搜索轮次 <input id="setMaxRounds" type="number" min="1" max="10" /></label>
+      <label>工作时间起 <input id="setWorkStart" type="text" placeholder="09:00" /></label>
+      <label>工作时间止 <input id="setWorkEnd" type="text" placeholder="18:00" /></label>
+      <label class="inline"><input id="setMonitor" type="checkbox" /> 监测 HR 回复（Phase 4）</label>
+      <label>监测间隔（分钟） <input id="setMonitorInterval" type="number" min="5" max="15" /></label>
+      <label class="inline"><input id="setDailyReport" type="checkbox" /> 生成每日日报</label>
+      <label>日报时间 <input id="setReportTime" type="text" placeholder="18:00" /></label>
+      <label class="inline"><input id="setEmailReport" type="checkbox" /> 邮件发送日报（Phase 8）</label>
+      <label class="inline"><input id="setAutoResume" type="checkbox" disabled /> 自动发送简历（Phase 6 校准后开放）</label>
+    </div>
+    <div class="row">
+      <button id="saveSettings" class="btn-secondary">保存设置</button>
+      <span id="settingsMsg" class="muted small"></span>
+    </div>
+  </details>
+
+  <details class="activity" id="greetingBox">
+    <summary>打招呼话术（Review / Autopilot 共用）</summary>
+    <p class="muted small">Autopilot 只会发送这里的话术；开启前你可以在授权页看到完整内容。</p>
+    <textarea id="greetTemplate" rows="4"></textarea>
+    <div class="row">
+      <span id="templateCounter" class="muted small">0 / 1000</span>
+      <label class="inline muted small">策略：
+        <select id="strategyMode">
+          <option value="template">固定模板（template）</option>
+          <option value="jd_personalized" disabled>按 JD 个性化（后续版本）</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button id="saveTemplate" class="btn-secondary">保存话术</button>
+      <button id="resetTemplate" class="btn-secondary">恢复默认</button>
+      <span id="templateMsg" class="muted small"></span>
+    </div>
+  </details>
+
+  <details class="activity" id="policyPreviewBox" hidden>
+    <summary>Autopilot Policy 试算（不发送任何消息）</summary>
+    <p class="muted small">对当前 Shortlist 逐条套用 12 条 Policy 规则，仅展示结果，不执行。</p>
+    <div class="row"><button id="previewPolicy" class="btn-secondary">试算当前 Shortlist</button></div>
+    <div id="policyPreviewResult" class="muted small"></div>
+  </details>
+
   <!-- ===== IDLE ===== -->
   <section id="stateIdle" class="state">
     <p class="hint">今天想找什么工作？用一句话描述即可（城市、方向、薪资、排除项）。</p>
@@ -105,6 +169,34 @@
       <button id="retryBtn" class="btn-primary">重新开始</button>
     </div>
   </section>
+
+  <!-- ===== Autopilot 首次授权 ===== -->
+  <div id="consentOverlay" class="overlay" hidden>
+    <div class="modal">
+      <h3>开启 Autopilot</h3>
+      <p class="small"><b>Agent 将能够：</b></p>
+      <ul class="small">
+        <li>✓ 自动搜索高匹配岗位</li>
+        <li>✓ 在每日上限内自动联系招聘者</li>
+        <li>✓ 持续监测已联系岗位的 HR 回复</li>
+        <li>✓ HR 明确索要简历时发送默认简历（需单独开启）</li>
+      </ul>
+      <p class="small"><b>Agent 不会：</b></p>
+      <ul class="small">
+        <li>× 绕过验证码 / 修改你的硬约束 / 超过每日上限</li>
+        <li>× 自动回答开放式、薪资、离职原因等 HR 问题</li>
+        <li>× 自动加微信 / 突破平台异常</li>
+      </ul>
+      <p class="small"><b>将自动发送的话术：</b></p>
+      <blockquote id="consentTemplatePreview" class="small"></blockquote>
+      <div class="row">
+        <button id="consentEditTemplate" class="btn-secondary">编辑话术</button>
+        <button id="consentCancel" class="btn-secondary">取消</button>
+        <button id="consentAgree" class="btn-primary">我理解并开启</button>
+      </div>
+      <div id="consentMsg" class="box box-error" hidden></div>
+    </div>
+  </div>
 
   <script type="module" src="sidepanel.js"></script>
 </body>

@@ -13,6 +13,18 @@ import {
   MAX_REPLAN,
   hhmm,
 } from './core-logic.js';
+import {
+  MODES,
+  DEFAULT_GREETING_TEMPLATE,
+  MAX_GREETING_TEMPLATE_LENGTH,
+  loadSettings,
+  saveSettings,
+  recordAutopilotConsent,
+  revokeAutopilotConsent,
+  isWithinWorkingHours,
+} from './settings.js';
+import { buildGreetingMessage } from './greeting-builder.js';
+import { evaluateAutopilotGreeting } from './autopilot-policy.js';
 
 const AI_BASE = 'http://127.0.0.1:8799';
 const AI_TIMEOUT = 3000;
@@ -24,6 +36,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export const session = {
   state: 'idle',
+  settings: null,
   goal: null,
   plan: null,
   allQueries: [],
@@ -527,7 +540,6 @@ function renderAgentSummary(shortlist) {
 
 // ---------------- Phase 5：用户批准后的打招呼（复用 content.js greetFull） ----------------
 async function greetSelected() {
-  const text = $('greetText').value.trim();
   const cap = Number($('capInput').value) || 5;
   const key = `greet-${todayKey()}`;
   const st = await chrome.storage.local.get(key);
@@ -550,6 +562,16 @@ async function greetSelected() {
       skipped++;
       addActivity('Greeting', `跳过 ${job.title}：${gate.reason}`);
       continue;
+    }
+    // 话术统一由 greeting-builder 生成（Review 同样走策略，保证行为一致）
+    let text;
+    try {
+      text = buildGreetingMessage({ job, greetingStrategy: session.settings?.greetingStrategy }).message;
+    } catch (e) {
+      $('completeError').hidden = false;
+      $('completeError').className = 'box box-error';
+      $('completeError').textContent = `话术不可用：${e?.message ?? e}`;
+      return;
     }
     try {
       await chrome.tabs.update(tab.id, { url: `https://www.zhipin.com${job.href}` });
@@ -638,7 +660,276 @@ const DEFAULT_GREET =
 
 async function loadGreetText() {
   const st = await chrome.storage.local.get('greetText');
-  $('greetText').value = st.greetText ?? DEFAULT_GREET;
+  const tpl = session.settings?.greetingStrategy?.template;
+  // 兼容旧版本：老用户只存过 greetText
+  $('greetText').value = tpl ?? st.greetText ?? DEFAULT_GREETING_TEMPLATE;
+}
+
+// ---------------- V0.5 Phase 1：模式 / 设置 / 话术 / 授权 / Policy 试算 ----------------
+function isAutopilot() {
+  return session.settings?.mode === 'autopilot';
+}
+
+function renderModeUi() {
+  const mode = session.settings?.mode ?? 'review';
+  $('modeReview').checked = mode === 'review';
+  $('modeAutopilot').checked = mode === 'autopilot';
+  const box = $('autopilotState');
+  box.hidden = false;
+  if (mode === 'autopilot') {
+    const ok = session.settings?.consent?.autopilot === true;
+    box.className = 'small';
+    box.innerHTML = ok
+      ? '<span class="mode-badge on">Autopilot 已授权</span> 当前版本只做规则预演，自动搜索/自动打招呼在后续阶段开启。'
+      : '<span class="mode-badge">未授权</span> 请重新选择 Autopilot 完成授权。';
+  } else {
+    box.className = 'muted small';
+    box.textContent = '当前为 Review Mode：所有联系动作都需要你手动确认。';
+  }
+  $('policyPreviewBox').hidden = mode !== 'autopilot';
+}
+
+function fillSettingsForm() {
+  const st = session.settings;
+  if (!st) return;
+  $('setMinScore').value = st.minimumAutoGreetingScore;
+  $('setDailyCap').value = st.dailyGreetingCap;
+  $('setBatchTarget').value = st.batchQualifiedTarget;
+  $('setMaxRounds').value = st.maxDiscoveryRounds;
+  $('setWorkStart').value = st.workingHours.start;
+  $('setWorkEnd').value = st.workingHours.end;
+  $('setMonitor').checked = st.monitorEnabled;
+  $('setMonitorInterval').value = st.monitorIntervalMinutes;
+  $('setDailyReport').checked = st.dailyReportEnabled;
+  $('setReportTime').value = st.dailyReportTime;
+  $('setEmailReport').checked = st.emailReportEnabled;
+  $('setAutoResume').checked = false;
+  $('capInput').value = st.dailyGreetingCap;
+}
+
+function readSettingsForm() {
+  const base = session.settings;
+  return {
+    ...base,
+    minimumAutoGreetingScore: Number($('setMinScore').value),
+    dailyGreetingCap: Number($('setDailyCap').value),
+    batchQualifiedTarget: Number($('setBatchTarget').value),
+    maxDiscoveryRounds: Number($('setMaxRounds').value),
+    workingHours: { start: $('setWorkStart').value.trim(), end: $('setWorkEnd').value.trim() },
+    monitorEnabled: $('setMonitor').checked,
+    monitorIntervalMinutes: Number($('setMonitorInterval').value),
+    dailyReportEnabled: $('setDailyReport').checked,
+    dailyReportTime: $('setReportTime').value.trim(),
+    emailReportEnabled: $('setEmailReport').checked,
+    autoSendResume: false,
+  };
+}
+
+async function persistSettings(next, msgEl, okText) {
+  const saved = await saveSettings(next);
+  session.settings = saved;
+  fillSettingsForm();
+  await refreshQuota();
+  if (msgEl) {
+    msgEl.textContent = okText;
+    setTimeout(() => { msgEl.textContent = ''; }, 2500);
+  }
+  return saved;
+}
+
+function renderTemplateForm() {
+  const st = session.settings?.greetingStrategy;
+  const tpl = st?.template ?? DEFAULT_GREETING_TEMPLATE;
+  $('greetTemplate').value = tpl;
+  $('greetText').value = tpl;
+  $('strategyMode').value = st?.mode ?? 'template';
+  updateTemplateCounter();
+}
+
+function updateTemplateCounter() {
+  const len = $('greetTemplate').value.length;
+  $('templateCounter').textContent = `${len} / ${MAX_GREETING_TEMPLATE_LENGTH}`;
+  return len;
+}
+
+function previewTemplateOrThrow() {
+  return buildGreetingMessage({
+    job: { jobId: 'preview', title: '（示例岗位）', company: '（示例公司）' },
+    greetingStrategy: { mode: 'template', templateId: 'preview', template: $('greetTemplate').value },
+  }).message;
+}
+
+function openConsent() {
+  let preview = '';
+  let err = '';
+  try {
+    preview = previewTemplateOrThrow();
+  } catch (e) {
+    err = `话术不可用：${e?.message ?? e}`;
+  }
+  $('consentTemplatePreview').textContent = preview || '（话术为空，请先填写）';
+  $('consentMsg').hidden = !err;
+  $('consentMsg').textContent = err;
+  $('consentAgree').disabled = Boolean(err);
+  $('consentOverlay').hidden = false;
+}
+
+function closeConsent() {
+  $('consentOverlay').hidden = true;
+}
+
+function revertModeRadio() {
+  $('modeReview').checked = (session.settings?.mode ?? 'review') === 'review';
+  $('modeAutopilot').checked = session.settings?.mode === 'autopilot';
+}
+
+async function setMode(mode) {
+  if (!MODES.includes(mode)) return;
+  if (mode === 'review') {
+    const hadConsent = session.settings?.consent?.autopilot === true;
+    const next = hadConsent ? revokeAutopilotConsent(session.settings) : { ...session.settings, mode: 'review' };
+    await persistSettings(next);
+    addActivity('Mode', hadConsent ? '已切回 Review Mode，并撤销 Autopilot 授权' : '已切换到 Review Mode（联系动作需手动确认）');
+    renderModeUi();
+    return;
+  }
+  // autopilot：首次开启必须先授权（后续再次切换不再重复弹窗）
+  if (session.settings?.consent?.autopilot !== true) {
+    openConsent();
+    return;
+  }
+  await persistSettings({ ...session.settings, mode: 'autopilot' });
+  addActivity('Mode', '已切换到 Autopilot（本阶段仅规则预演，不自动执行）');
+  renderModeUi();
+}
+
+async function runPolicyPreview() {
+  const out = $('policyPreviewResult');
+  const shortlist = session.shortlist ?? [];
+  if (!shortlist.length) {
+    out.textContent = '当前没有 Shortlist，请先在 Review Mode 跑一轮搜索。';
+    return;
+  }
+  const st = session.settings;
+  const cap = st.dailyGreetingCap;
+  const key = `greet-${todayKey()}`;
+  const done = Number((await chrome.storage.local.get(key))[key] ?? 0);
+  const history = await getHistory();
+  const nowHHMM = hhmm();
+  const withinHours = isWithinWorkingHours(nowHHMM, st.workingHours.start, st.workingHours.end);
+  let allowed = 0;
+  const rows = shortlist
+    .map((job) => {
+      const d = evaluateAutopilotGreeting({
+        settings: st,
+        consent: st.consent,
+        job: { jobId: job.jobId, score: job.__ai?.score ?? 0, complete: Boolean(job.jobId && job.href) },
+        hardExclusionHit: { hit: false }, // 已通过硬过滤，进入 Shortlist 即未命中
+        alreadyGreeted: history.has(job.jobId),
+        dailyDone: done,
+        nowHHMM,
+        bossHealthy: true,
+        captchaDetected: false,
+        paused: false,
+      });
+      if (d.allowed) allowed++;
+      return `<div class="policy-line ${d.allowed ? 'policy-allow' : 'policy-deny'}">${
+        d.allowed ? '✓ 会联系' : '× 不会联系'
+      } ${escapeHtml(job.title ?? job.jobId)}（${job.__ai?.score ?? 0}分）— ${escapeHtml(d.reason)}</div>`;
+    })
+    .join('');
+  out.innerHTML =
+    `<div><b>试算结果（未发送任何消息）</b>：会联系 ${allowed}，不会联系 ${shortlist.length - allowed}；` +
+    `今日已联系 ${done}/${cap}；工作时间 ${st.workingHours.start}-${st.workingHours.end}` +
+    `（当前 ${nowHHMM}，${withinHours ? '在工作时间内' : '不在工作时间内'}）</div>` +
+    rows;
+  addActivity('Policy', `Policy 试算：允许 ${allowed} / 拒绝 ${shortlist.length - allowed}（未执行任何动作）`);
+}
+
+function bindSettingsUi() {
+  $('modeReview').onchange = () => setMode('review');
+  $('modeAutopilot').onchange = () => setMode('autopilot');
+  $('consentCancel').onclick = async () => {
+    closeConsent();
+    revertModeRadio();
+  };
+  $('consentEditTemplate').onclick = () => {
+    closeConsent();
+    $('greetingBox').open = true;
+    $('greetTemplate').focus();
+  };
+  $('consentAgree').onclick = async () => {
+    let preview;
+    try {
+      preview = previewTemplateOrThrow();
+    } catch (e) {
+      $('consentMsg').hidden = false;
+      $('consentMsg').textContent = `话术不可用：${e?.message ?? e}`;
+      return;
+    }
+    const withTpl = await saveSettings({
+      ...session.settings,
+      greetingStrategy: {
+        ...session.settings.greetingStrategy,
+        mode: 'template',
+        template: $('greetTemplate').value,
+      },
+    });
+    const recorded = recordAutopilotConsent(withTpl);
+    const saved = await saveSettings({ ...recorded, mode: 'autopilot' });
+    session.settings = saved;
+    fillSettingsForm();
+    renderTemplateForm();
+    closeConsent();
+    renderModeUi();
+    addActivity('Consent', `已授权 Autopilot（话术 ${preview.length} 字，可随时切回 Review 撤销运行）`);
+  };
+  $('saveSettings').onclick = async () => {
+    const next = readSettingsForm();
+    await persistSettings(next, $('settingsMsg'), '已保存');
+    renderModeUi();
+    addActivity('Settings', `Autopilot 设置已更新（阈值 ${next.minimumAutoGreetingScore}，每日上限 ${next.dailyGreetingCap}）`);
+  };
+  $('greetTemplate').oninput = updateTemplateCounter;
+  $('saveTemplate').onclick = async () => {
+    const msg = $('templateMsg');
+    try {
+      const next = await saveSettings({
+        ...session.settings,
+        greetingStrategy: {
+          ...session.settings.greetingStrategy,
+          mode: 'template',
+          template: $('greetTemplate').value,
+        },
+      });
+      session.settings = next;
+      $('greetText').value = next.greetingStrategy.template;
+      await chrome.storage.local.set({ greetText: next.greetingStrategy.template });
+      msg.textContent = '话术已保存';
+      setTimeout(() => { msg.textContent = ''; }, 2500);
+    } catch (e) {
+      msg.textContent = e?.message ?? String(e);
+    }
+  };
+  $('resetTemplate').onclick = async () => {
+    const next = await saveSettings({
+      ...session.settings,
+      greetingStrategy: {
+        ...session.settings.greetingStrategy,
+        mode: 'template',
+        template: DEFAULT_GREETING_TEMPLATE,
+      },
+    });
+    session.settings = next;
+    renderTemplateForm();
+    $('templateMsg').textContent = '已恢复默认话术';
+    setTimeout(() => { $('templateMsg').textContent = ''; }, 2500);
+  };
+  $('previewPolicy').onclick = () => {
+    runPolicyPreview().catch((e) => {
+      $('policyPreviewResult').textContent = `试算失败：${e?.message ?? e}`;
+    });
+  };
 }
 
 // ---------------- 事件绑定 ----------------
@@ -691,7 +982,11 @@ function bind() {
   };
   $('retryBtn').onclick = () => showState('idle');
   $('restartBtn').onclick = () => showState('idle');
-  $('capInput').onchange = refreshQuota;
+  // Review 的运行上限与 Autopilot 每日上限共用同一份设置，避免出现两个"上限"
+  $('capInput').onchange = async () => {
+    const v = Number($('capInput').value) || 5;
+    await persistSettings({ ...session.settings, dailyGreetingCap: v });
+  };
   $('toApproveBtn').onclick = () => {
     if (!session.selectedIds.size) {
       $('completeError').hidden = false;
@@ -742,14 +1037,17 @@ function bindContextWatchers() {
 async function init() {
   bind();
   bindContextWatchers();
+  session.settings = await loadSettings();
+  renderModeUi();
+  fillSettingsForm();
+  renderTemplateForm();
+  bindSettingsUi();
   await Promise.all([checkBoss(), checkAi()]);
   await getCurrentBossContext();
-  const st = await chrome.storage.local.get('dailyCap');
-  if (st.dailyCap) $('capInput').value = st.dailyCap;
   await refreshQuota();
   await loadGreetText();
 }
 
 init();
 
-export { AI_BASE, todayKey, checkBoss, checkAi, getCurrentBossContext, scheduleContextRefresh, findBossTab, gotoSearch, fetchDetail };
+export { AI_BASE, todayKey, isAutopilot, runPolicyPreview, setMode, checkBoss, checkAi, getCurrentBossContext, scheduleContextRefresh, findBossTab, gotoSearch, fetchDetail };
