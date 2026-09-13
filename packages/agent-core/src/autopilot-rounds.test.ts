@@ -93,7 +93,7 @@ describe('D. Daily Cap 硬约束（cap=5, already=3, 推荐 8 → 最多 2 个�
   it('最多只创建并执行 2 个 Action，其余在创建阶段就被 Policy 拒绝', async () => {
     const jobs = Array.from({ length: 8 }, (_v, i) => makeJob({ jobId: `j-${i + 1}`, score: 90 - i }));
     const h = makeHarness({ jobs, replanResponses: [{ ok: true, status: 'complete', newQueries: [] }] }, { dailyGreetingCap: 5 });
-    await h.chromeStub.storage.local.set({ [`greet-${localDateKey()}`]: 3 });
+    await h.chromeStub.storage.local.set({ [`greet-${h.dateKey()}`]: 3 });
 
     const start = await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
     expect(start.ok).toBe(true);

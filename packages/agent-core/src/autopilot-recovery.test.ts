@@ -192,7 +192,7 @@ describe('I. Resume（条件合法才恢复；条件失效保持 PAUSED）', () 
     const h = makeHarness({ jobs: [makeJob({ jobId: 'j-1', score: 88 })] }, { dailyGreetingCap: 2 });
     await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
     await h.engine.pauseByUser();
-    await h.chromeStub.storage.local.set({ [`greet-${localDateKey()}`]: 2 });
+    await h.chromeStub.storage.local.set({ [`greet-${h.dateKey()}`]: 2 });
     const res = await h.engine.resumeAutopilot();
     expect(res.ok).toBe(true);
     expect(res.reason).toBe('DAILY_CAP_REACHED');

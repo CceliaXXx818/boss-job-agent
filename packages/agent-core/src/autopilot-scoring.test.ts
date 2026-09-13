@@ -45,7 +45,7 @@ describe('评分分批（避免一次 60 秒的模型调用被 SW 回收）', ()
     const h = makeHarness({ jobs: manyJobs(7), replanResponses: [{ ok: true, status: 'complete', newQueries: [] }] }, { minimumAutoGreetingScore: 99 });
     await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
     await h.runUntil(done, { maxSteps: 200 });
-    const scored = (await getEventsByDate(localDateKey())).filter((e) => e.type === EVENT_TYPES.JOB_SCORED);
+    const scored = (await getEventsByDate(h.dateKey())).filter((e) => e.type === EVENT_TYPES.JOB_SCORED);
     expect(scored).toHaveLength(7);
   });
 });

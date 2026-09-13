@@ -2,6 +2,8 @@
 //
 // 铁律：
 //   · 没有 while(true)、没有长驻 await、没有 setInterval；一个 tick 只推进一步。
+//   · 所有事件写入都显式传入注入时钟（{ now: now() }）：事件分区与 runtime.date 必须来自同一个时钟，
+//     否则测试时钟与真实时钟跨天时会分叉（生产环境两者相同，但测试必须可复现）。
 //   · 状态只有一个来源：chrome.storage.local 里的 jobAgentAutopilotRuntime。
 //   · 每个 step 结束后立即 persist；SW 被 suspend 不会丢进度。
 //   · 所有副作用（浏览器 I/O、AI HTTP、时钟）都通过 deps 注入 → 可在 Node 里完整测试。
@@ -270,7 +272,7 @@ export function createAutopilotEngine(deps) {
         todayGreetingCount,
         maxDiscoveryRounds: settings.maxDiscoveryRounds,
       },
-    });
+    }, { now: now() });
     activity(`Autopilot started｜城市 ${context.cityName}｜今日已联系 ${todayGreetingCount}/${settings.dailyGreetingCap}`);
 
     // 提醒：离工作时间结束太近，本轮很可能跑不完（不改变执行规则，只提示）
@@ -315,7 +317,7 @@ export function createAutopilotEngine(deps) {
       type: deps.events.EVENT_TYPES.AUTOPILOT_PAUSED,
       jobId: null,
       metadata: { reason, code: code ?? reason, activeActionId: rt.activeActionId, roundIndex: rt.roundIndex },
-    });
+    }, { now: now() });
     activity(`Autopilot paused：${reason}`);
     return { ok: true, status: rt.status, reason };
   }
@@ -349,7 +351,7 @@ export function createAutopilotEngine(deps) {
     await deps.events.appendEvent({
       type: deps.events.EVENT_TYPES.AUTOPILOT_RESUMED,
       metadata: { sessionId: next.sessionId, roundIndex: next.roundIndex, step: next.step },
-    });
+    }, { now: now() });
     activity('Autopilot resumed');
     return { ok: true, status: next.status };
   }
@@ -366,7 +368,7 @@ export function createAutopilotEngine(deps) {
     await deps.events.appendEvent({
       type: deps.events.EVENT_TYPES.AUTOPILOT_STOPPED,
       metadata: { sessionId: rt.sessionId, roundIndex: rt.roundIndex, todayGreetingCount: rt.todayGreetingCount },
-    });
+    }, { now: now() });
     activity('Autopilot stopped（今日 Events / Job State / Action 历史保留）');
     return { ok: true, status: rt.status };
   }
@@ -395,7 +397,7 @@ export function createAutopilotEngine(deps) {
         roundIndex: rt.roundIndex,
         todayGreetingCount: rt.todayGreetingCount,
       },
-    });
+    }, { now: now() });
     activity(`Outreach completed：${reason}｜今日已联系 ${rt.todayGreetingCount}/${rt.dailyGreetingCap}｜进入 MONITORING（下一阶段才真正监测 HR 回复）`);
     return { ok: true, status: rt.status, reason };
   }
@@ -438,7 +440,7 @@ export function createAutopilotEngine(deps) {
         minimumAutoGreetingScore: rt.minimumAutoGreetingScore ?? null,
         source: info.source,
       },
-    });
+    }, { now: now() });
   }
 
   /** 本轮候选目标（只认设置里的 batchQualifiedTarget） */
@@ -492,7 +494,7 @@ export function createAutopilotEngine(deps) {
       type: deps.events.EVENT_TYPES.DISCOVERY_ROUND_STARTED,
       idempotencyKey: `round-started:${rt.sessionId}:${rt.roundIndex}`,
       metadata: { roundIndex: rt.roundIndex, queries: fresh.map((q) => q.keyword), city: rt.browserContext?.cityName },
-    });
+    }, { now: now() });
     activity(`Discovery Round ${rt.roundIndex} started｜搜索词：${fresh.map((q) => q.keyword).join('、')}`);
 
     return {
@@ -898,7 +900,7 @@ export function createAutopilotEngine(deps) {
         jobTitle: d.job.title ?? null,
         idempotencyKey: `policy-skip:${d.job.jobId}:${rt.date}`,
         metadata: { reason: d.reason, source: 'policy', phase: 'create', mode: 'autopilot' },
-      });
+      }, { now: now() });
     }
 
     if (!planned.length) {
@@ -1066,7 +1068,7 @@ export function createAutopilotEngine(deps) {
       type: deps.events.EVENT_TYPES.DISCOVERY_ROUND_COMPLETED,
       idempotencyKey: `round-completed:${rt.sessionId}:${rt.roundIndex}`,
       metadata: { ...stats, city: rt.browserContext?.cityName ?? null },
-    });
+    }, { now: now() });
     activity(
       `Round ${rt.roundIndex} completed｜发现 ${stats.discoveredCount}｜过滤后 ${stats.filteredCount}｜评分 ${stats.analyzedCount}｜推荐 ${stats.recommendedCount}｜Replan ${stats.replanCount}`,
     );
@@ -1173,7 +1175,7 @@ export function createAutopilotEngine(deps) {
       type: deps.events.EVENT_TYPES.DISCOVERY_ROUND_STARTED,
       idempotencyKey: `round-started:${rt.sessionId}:${nextRound}`,
       metadata: { roundIndex: nextRound, queries: merged.added.map((q) => q.keyword), city: rt.browserContext?.cityName },
-    });
+    }, { now: now() });
     activity(`Discovery Round ${nextRound} started｜搜索词：${merged.added.map((q) => q.keyword).join('、')}`);
     return {
       patch: {

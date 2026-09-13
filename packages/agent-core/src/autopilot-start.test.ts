@@ -92,7 +92,7 @@ describe('A. Start 校验（V0.5 §10）', () => {
     const rt = await loadRuntime();
     expect(rt.sessionId).toBeNull();
     expect(rt.status).toBe(AUTOPILOT_STATUS.IDLE);
-    const evs = await getEventsByDate(localDateKey());
+    const evs = await getEventsByDate(h.dateKey());
     expect(evs.filter((e) => e.type === EVENT_TYPES.AUTOPILOT_STARTED)).toHaveLength(0);
     expect(await getAllActions()).toEqual([]);
   });
@@ -116,7 +116,7 @@ describe('A2. 合法配置 → STARTED 并写入持久化 runtime', () => {
     expect(rt.log.length).toBeGreaterThan(0);
     expect(h.chromeStub.__store['jobAgentAutopilotRuntime']).toBeTruthy();
 
-    const started = (await getEventsByDate(localDateKey())).find((e) => e.type === EVENT_TYPES.AUTOPILOT_STARTED);
+    const started = (await getEventsByDate(h.dateKey())).find((e) => e.type === EVENT_TYPES.AUTOPILOT_STARTED);
     expect(started).toBeTruthy();
     expect(started?.metadata.city).toBe('上海');
     expect(started?.metadata.dailyGreetingCap).toBe(5);
@@ -142,7 +142,7 @@ describe('A3. cap 已满：不进入 Discovery，直接 OUTREACH_COMPLETE', () =
       { dailyGreetingCap: 1 },
     );
     // 写入 legacy 计数：今天已经联系过 1 个
-    await h.chromeStub.storage.local.set({ [`greet-${localDateKey()}`]: 1 });
+    await h.chromeStub.storage.local.set({ [`greet-${h.dateKey()}`]: 1 });
 
     const res = await h.engine.startAutopilot({ rawGoal: GOAL });
     expect(res.ok).toBe(true);
@@ -163,7 +163,7 @@ describe('A3. cap 已满：不进入 Discovery，直接 OUTREACH_COMPLETE', () =
       { jobs: [makeJob({ jobId: 'j-1', score: 95 })] },
       { dailyGreetingCap: 2 },
     );
-    await h.chromeStub.storage.local.set({ [`greet-${localDateKey()}`]: 2, greetedHistory: ['legacy-1'] });
+    await h.chromeStub.storage.local.set({ [`greet-${h.dateKey()}`]: 2, greetedHistory: ['legacy-1'] });
     const res = await h.engine.startAutopilot({ rawGoal: GOAL });
     expect(res.status).toBe(AUTOPILOT_STATUS.OUTREACH_COMPLETE);
     expect(h.calls.greet).toEqual([]);

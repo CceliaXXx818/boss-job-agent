@@ -4,6 +4,7 @@
 import { makeChrome, installChrome, type ChromeStub } from './chrome-stub.js';
 import { createAutopilotEngine } from '../../../../extension/autopilot-engine.js';
 import { AUTOPILOT_STATUS, AUTOPILOT_STEPS, loadRuntime, RUNTIME_KEY } from '../../../../extension/autopilot-runtime.js';
+import { localDateKey } from '../../../../extension/event-store.js';
 import * as settings from '../../../../extension/settings.js';
 import * as events from '../../../../extension/event-store.js';
 import * as states from '../../../../extension/job-state.js';
@@ -243,6 +244,16 @@ export function createHarness(opts: HarnessOptions = {}) {
     current = date instanceof Date ? date : new Date(date);
   }
 
+  /**
+   * 脚手架时钟对应的本地日期键。
+   * 注意：Autopilot 相关测试**必须**用这个，而不是 `localDateKey()`（真实今天）——
+   * 脚手架时钟固定在 2026-09-13，一旦真实日期跨天（例如本地已到 00:0x），
+   * 两者就会指向不同的事件分区，导致用例随机失败。
+   */
+  function dateKey() {
+    return localDateKey(current);
+  }
+
   function reinstallStorage(snapshot: Record<string, unknown>) {
     const restored = makeChrome(snapshot);
     installChrome(restored);
@@ -260,6 +271,7 @@ export function createHarness(opts: HarnessOptions = {}) {
     advance,
     runUntil,
     setNow,
+    dateKey,
     reinstallStorage,
     snapshot: () => JSON.parse(JSON.stringify(chromeStub.__store)) as Record<string, unknown>,
     runtime: () => loadRuntime(),
