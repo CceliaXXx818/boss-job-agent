@@ -69,7 +69,8 @@ describe('评分失败可恢复，且不重复付费', () => {
     expect(rt.status).toBe(AUTOPILOT_STATUS.PAUSED);
     expect(rt.pauseReason).toContain('评分失败：upstream model crashed');
     expect(rt.pauseReason).toContain('已评 5 个');
-    expect(rt.pauseReason).toContain('剩余 7 个');
+    // 边抓边评：第 2 批开始时只抓了 10 个详情（5 已评 + 5 待评），剩下 2 个还没抓
+    expect(rt.pauseReason).toContain('剩余 5 个');
     expect(h.calls.scoreBatches.map((b) => b.length)).toEqual([5, 5]);
   });
 

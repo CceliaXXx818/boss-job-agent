@@ -115,6 +115,8 @@ export function emptyRuntime(now = new Date()) {
     scoredBuffer: [],
     recommendedJobIds: [],
     eligibleJobIds: [],
+    eligibleRejectSamples: [],
+    detailsStoppedEarly: false,
     outreachQueue: [],
     actionsCreatedFor: [],
 

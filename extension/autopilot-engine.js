@@ -37,6 +37,7 @@ import {
   attachScores,
   buildResultSummary,
   decideReplanForCandidates,
+  detailBudgetForTarget,
   filterAutopilotEligible,
   buildSearchUrl,
   decideAfterRound,
@@ -401,6 +402,32 @@ export function createAutopilotEngine(deps) {
 
   // ---------------- 单步执行器 ----------------
 
+  /** 可自动联系候选的静态条件评估（FETCH_DETAIL 提前收敛 / SCORE 提前收敛 / EVALUATE 共用） */
+  async function evaluateEligibility(rt, settings) {
+    const recommended = strongMatches(rt.scoredBuffer ?? []);
+    let greetingValid = true;
+    try {
+      deps.greeting.buildGreetingMessage({
+        job: { jobId: 'eligibility' },
+        greetingStrategy: (settings ?? (await deps.settings.loadSettings())).greetingStrategy,
+      });
+    } catch {
+      greetingValid = false;
+    }
+    const { eligible, rejected } = filterAutopilotEligible(recommended, {
+      minimumAutoGreetingScore: rt.minimumAutoGreetingScore ?? 80,
+      hardExclusions: rt.hardExclusions ?? [],
+      greetedJobIds: [...(await deps.records.getGreetedHistory())],
+      greetingValid,
+    });
+    return { recommended, eligible, rejected, greetingValid };
+  }
+
+  /** 本轮候选目标（只认设置里的 batchQualifiedTarget） */
+  function roundTargetOf(rt) {
+    return Number(rt.batchQualifiedTarget) || DEFAULT_TARGET_QUALIFIED;
+  }
+
   /** 每个 step 的返回：{ nextStep, status, done } */
   async function stepPlan(rt) {
     const daily = await deps.records.getDailyGreetingCount(now());
@@ -474,6 +501,8 @@ export function createAutopilotEngine(deps) {
         scoredBuffer: [],
         recommendedJobIds: [],
         eligibleJobIds: [],
+        eligibleRejectSamples: [],
+        detailsStoppedEarly: false,
         outreachQueue: [],
         actionsCreatedFor: [],
         log: appendLog(rt, `Discovery Round ${rt.roundIndex} started`),
@@ -523,8 +552,11 @@ export function createAutopilotEngine(deps) {
     });
     const seen = new Set(rt.seenJobIds ?? []);
     for (const j of qualified) seen.add(j.jobId);
-    const targets = pickDetailTargets(qualified, rt.fetchedDetailIds ?? [], DETAIL_FETCH_LIMIT);
-    activity(`Filter：保留 ${qualified.length} 个（命中硬排除移除 ${removedCount} 个），选取 ${targets.length} 个抓详情`);
+    const budget = detailBudgetForTarget(roundTargetOf(rt), DETAIL_FETCH_LIMIT);
+    const targets = pickDetailTargets(qualified, rt.fetchedDetailIds ?? [], budget);
+    activity(
+      `Filter：保留 ${qualified.length} 个（命中硬排除移除 ${removedCount} 个），选取 ${targets.length} 个抓详情（候选目标 ${roundTargetOf(rt)} → 详情预算 ${budget}）`,
+    );
 
     if (qualified.length) {
       await deps.records.recordJobsDiscovered({
@@ -570,13 +602,18 @@ export function createAutopilotEngine(deps) {
       return { toolFailure: { step: AUTOPILOT_STEPS.FETCH_DETAIL, message: res?.error ?? '详情抓取失败' } };
     }
     const full = mergeDetail(job, res.detail);
+    const nextIndex = rt.currentDetailIndex + 1;
+    // 边抓边评：攒够"尚未评分"的一批就交给 SCORE；SCORE 达标后会直接结束本轮详情抓取
+    const scoredIds = new Set((rt.scoredBuffer ?? []).map((j) => j.jobId));
+    const unscoredNow = (rt.detailBuffer ?? []).filter((j) => !scoredIds.has(j.jobId)).length + 1;
+    const shouldScoreNow = unscoredNow >= SCORE_BATCH_SIZE;
     return {
       patch: {
         detailBuffer: [...(rt.detailBuffer ?? []), full],
         fetchedDetailIds: [...(rt.fetchedDetailIds ?? []), job.jobId],
-        currentDetailIndex: rt.currentDetailIndex + 1,
+        currentDetailIndex: nextIndex,
       },
-      nextStep: AUTOPILOT_STEPS.FETCH_DETAIL,
+      nextStep: shouldScoreNow ? AUTOPILOT_STEPS.SCORE : AUTOPILOT_STEPS.FETCH_DETAIL,
     };
   }
 
@@ -613,40 +650,45 @@ export function createAutopilotEngine(deps) {
     activity(
       `Score：本批 ${scored.filter((j) => j.__ai?.ok).length} 个${remaining > 0 ? `（还有 ${remaining} 个待评）` : ''}，累计 ≥75 分 ${strongMatches(merged).length} 个`,
     );
+
+    // 提前收敛：这一批评完就已经凑齐候选目标 → 不再评剩下的、也不再抓剩余详情（V0.5 Phase 3 优化）
+    const target = roundTargetOf(rt);
+    const early = await evaluateEligibility({ ...rt, scoredBuffer: merged }, null);
+    if (early.eligible.length >= target && target > 0) {
+      activity(
+        `→ 已凑齐候选目标（Eligible ${early.eligible.length} / Target ${target}）：提前结束本轮详情抓取与评分`,
+      );
+      return {
+        patch: {
+          scoredBuffer: merged,
+          currentRoundStats: { ...rt.currentRoundStats, analyzedCount: counts },
+          detailsStoppedEarly: true,
+          log: appendLog(rt, `Score：本批 ${chunk.length} 个 → Eligible ${early.eligible.length} / Target ${target}，提前收敛`),
+        },
+        nextStep: AUTOPILOT_STEPS.EVALUATE,
+      };
+    }
+    const moreDetailsToFetch = rt.currentDetailIndex < (rt.detailTargets ?? []).length;
     return {
       patch: {
         scoredBuffer: merged,
         currentRoundStats: { ...rt.currentRoundStats, analyzedCount: counts },
         log: appendLog(rt, `Score：本批 ${chunk.length} 个（累计 ${counts}）`),
       },
-      nextStep: remaining > 0 ? AUTOPILOT_STEPS.SCORE : AUTOPILOT_STEPS.EVALUATE,
+      nextStep:
+        remaining > 0
+          ? AUTOPILOT_STEPS.SCORE
+          : moreDetailsToFetch
+            ? AUTOPILOT_STEPS.FETCH_DETAIL
+            : AUTOPILOT_STEPS.EVALUATE,
     };
   }
 
   async function stepEvaluate(rt) {
-    // Recommended = AI 打分到推荐线（≥75）的岗位；只是"看起来匹配"
-    const recommended = strongMatches(rt.scoredBuffer ?? []);
-    // Autopilot Eligible = 满足自动联系静态条件的岗位（阈值 85 / 未硬排除 / 未联系过 / 信息完整 / 话术可用）
+    // Recommended = AI 打分到推荐线（≥75）；Autopilot Eligible = 满足自动联系静态条件
     const settings = await deps.settings.loadSettings();
-    const history = await deps.records.getGreetedHistory();
-    let greetingValid = true;
-    try {
-      deps.greeting.buildGreetingMessage({
-        job: { jobId: 'evaluate' },
-        greetingStrategy: settings.greetingStrategy,
-      });
-    } catch {
-      greetingValid = false;
-    }
-    const { eligible, rejected } = filterAutopilotEligible(recommended, {
-      minimumAutoGreetingScore: rt.minimumAutoGreetingScore ?? settings.minimumAutoGreetingScore,
-      hardExclusions: rt.hardExclusions ?? [],
-      greetedJobIds: [...history],
-      greetingValid,
-    });
-
-    // 目标只认用户在设置里的 batchQualifiedTarget（不再使用 Planner 的 successCriteria.targetQualifiedJobs）
-    const target = Number(rt.batchQualifiedTarget) || Number(settings.batchQualifiedTarget) || DEFAULT_TARGET_QUALIFIED;
+    const { recommended, eligible, rejected } = await evaluateEligibility(rt, settings);
+    const target = roundTargetOf(rt);
 
     if (recommended.length) {
       await deps.records.recordJobsShortlisted({ jobs: recommended, mode: 'autopilot', at: now() });
@@ -655,8 +697,9 @@ export function createAutopilotEngine(deps) {
     // 三个概念都可观察：Recommended / Autopilot Eligible / Round Target
     activity(`Recommended ${recommended.length}`);
     activity(`Autopilot Eligible ${eligible.length} / Target ${target}`);
-    if (rejected.length && !eligible.length) {
-      activity(`→ 暂无可自动联系候选，示例原因：${rejected[0].reason}`);
+    const reasonSample = rejected.slice(0, 2).map((r) => r.reason);
+    if (eligible.length < target && reasonSample.length) {
+      activity(`→ 不可自动联系示例原因：${reasonSample.join('；')}`);
     }
 
     const decision = decideReplanForCandidates({
@@ -673,14 +716,20 @@ export function createAutopilotEngine(deps) {
       eligibleCount: eligible.length,
       roundTarget: target,
     };
+    const logLine = [
+      `Recommended ${recommended.length}`,
+      `Eligible ${eligible.length} / Target ${target}`,
+      decision.skipReplan ? 'skip Replan' : 'Replan',
+      eligible.length < target && reasonSample.length ? `原因：${reasonSample.join('；')}` : null,
+    ]
+      .filter(Boolean)
+      .join('｜');
     const patch = {
       recommendedJobIds: recommended.map((j) => j.jobId),
       eligibleJobIds: eligible.map((j) => j.jobId),
+      eligibleRejectSamples: reasonSample,
       currentRoundStats: stats,
-      log: appendLog(
-        rt,
-        `Recommended ${recommended.length}｜Eligible ${eligible.length} / Target ${target}｜${decision.skipReplan ? 'skip Replan' : 'Replan'}`,
-      ),
+      log: appendLog(rt, logLine),
     };
 
     if (!decision.skipReplan) {
@@ -696,6 +745,13 @@ export function createAutopilotEngine(deps) {
       strongMatchCount: strongMatches(rt.scoredBuffer ?? []).length,
       topTitles: (rt.roundQualified ?? []).map((j) => j.title).slice(0, 8),
       filteredOut: rt.currentRoundStats?.filteredCount ?? 0,
+      // Autopilot 语义：告诉模型"还差多少可自动联系候选"，而不是 V0.4 的 ≥75 目标
+      eligibleCount: (rt.eligibleJobIds ?? []).length,
+      targetCandidates: roundTargetOf(rt),
+      minimumAutoGreetingScore: rt.minimumAutoGreetingScore,
+      roundIndex: rt.roundIndex,
+      maxRounds: rt.maxDiscoveryRounds,
+      rejectedSamples: rt.eligibleRejectSamples ?? [],
     });
     const res = await deps.ai.replanSearch({
       goal: rt.goal,
@@ -1018,6 +1074,8 @@ export function createAutopilotEngine(deps) {
         scoredBuffer: [],
         recommendedJobIds: [],
         eligibleJobIds: [],
+        eligibleRejectSamples: [],
+        detailsStoppedEarly: false,
         outreachQueue: [],
         actionsCreatedFor: [],
         replanCount: 0,
@@ -1033,6 +1091,12 @@ export function createAutopilotEngine(deps) {
       qualifiedCount: rt.roundQualified?.length ?? 0,
       strongMatchCount: (rt.recommendedJobIds ?? []).length,
       topTitles: (rt.roundQualified ?? []).map((j) => j.title).slice(0, 8),
+      eligibleCount: (rt.eligibleJobIds ?? []).length,
+      targetCandidates: roundTargetOf(rt),
+      minimumAutoGreetingScore: rt.minimumAutoGreetingScore,
+      roundIndex: rt.roundIndex + 1,
+      maxRounds: rt.maxDiscoveryRounds,
+      rejectedSamples: rt.eligibleRejectSamples ?? [],
     });
     const res = await deps.ai.replanSearch({
       goal: rt.goal,

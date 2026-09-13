@@ -226,6 +226,8 @@ describe('engine 侧不再把"评分成功"当失败（回归）', () => {
   it('评分按 SCORE_BATCH_SIZE 分批，并跳过已经评过分的岗位', () => {
     expect(engine).toMatch(/SCORE_BATCH_SIZE = 5/);
     expect(engine).toMatch(/const pending = buffer\.filter\(\(j\) => !already\.has\(j\.jobId\)\)/);
-    expect(engine).toMatch(/nextStep: remaining > 0 \? AUTOPILOT_STEPS\.SCORE : AUTOPILOT_STEPS\.EVALUATE/);
+    // 还有待评的批次就继续 SCORE；否则回到抓详情（还有未抓目标）或进入 EVALUATE
+    expect(engine).toMatch(/remaining > 0\s*\n?\s*\? AUTOPILOT_STEPS\.SCORE/);
+    expect(engine).toMatch(/moreDetailsToFetch\s*\n?\s*\? AUTOPILOT_STEPS\.FETCH_DETAIL/);
   });
 });

@@ -212,16 +212,32 @@ export interface ReplanResultSummary {
   strongMatchCount: number;
   topTitles: string[];
   rejectedReasons: string[];
+  /**
+   * V0.5 Phase 3（Autopilot 可选上下文）：
+   * 给了这几个字段，就按"可自动联系候选（eligible）vs 候选目标（targetCandidates）"判定，
+   * 而不是 V0.4 的"≥75 分数量 vs goal.targetQualifiedJobs(=10)"。
+   * Review（Side Panel）不传，因此行为完全不变。
+   */
+  eligibleCount?: number;
+  targetCandidates?: number;
+  minimumAutoGreetingScore?: number;
+  roundIndex?: number;
+  maxRounds?: number;
+  rejectedSamples?: string[];
 }
 
-export function buildReplanSystem(goal: JobSearchGoal): string {
+export function buildReplanSystem(goal: JobSearchGoal, autopilot = false): string {
   return [
     '你是求职搜索策略评估器。根据"当前结果"判断是否需要补充搜索词，只输出 JSON。',
     '',
     '【严格限制】',
     '- 只能新增搜索 keyword；禁止修改城市、薪资下限、hardExclusions、softNegativePreferences、每日上限',
-    '- 判定规则（必须严格遵守）：当「≥75 分数量」<「目标高匹配岗位数」时，必须返回 status="continue" 并给出 2~4 个新关键词',
-    '- 只有当 ≥75 分数量已达标时，才允许返回 status="complete" 且 newKeywords 为空',
+    autopilot
+      ? `- 判定规则（必须严格遵守）：当「可自动联系候选数」<「候选目标」时，必须返回 status="continue" 并给出 2~4 个新关键词；可自动联系候选 = 分数 ≥「自动联系阈值」且未被硬排除且此前未联系过。注意「≥75 分数量」只是宽松推荐，不算达标`
+      : '- 判定规则（必须严格遵守）：当「≥75 分数量」<「目标高匹配岗位数」时，必须返回 status="continue" 并给出 2~4 个新关键词',
+    autopilot
+      ? '- 只有当「可自动联系候选数」已达到「候选目标」时，才允许返回 status="complete" 且 newKeywords 为空'
+      : '- 只有当 ≥75 分数量已达标时，才允许返回 status="complete" 且 newKeywords 为空',
     '- 不允许用"放宽条件"（取消 hardExclusions / 降低薪资）来凑数量',
     '',
     `当前固定条件（不可修改）：城市=${goal.cities.map((c) => c.name).join('、')}，薪资下限=${goal.salaryMinK ?? '不限'}K，硬排除=${goal.hardExclusions.join('、') || '无'}`,
@@ -236,14 +252,24 @@ export function buildReplanUser(input: {
 }): string {
   const searched = input.searchedQueries.map((q) => `${q.cityName}·${q.keyword}`).join('；') || '无';
   const rs = input.resultSummary;
+  const autopilot = useAutopilotTarget(rs);
+  const lines = autopilot
+    ? [
+        `候选目标（每轮需要凑齐的可自动联系岗位数）：${rs.targetCandidates}`,
+        `自动联系阈值（分数必须 ≥）：${rs.minimumAutoGreetingScore ?? '未指定'}`,
+        rs.roundIndex ? `当前轮次：第 ${rs.roundIndex} 轮 / 最多 ${rs.maxRounds ?? '?'} 轮` : null,
+        `当前可自动联系候选：${rs.eligibleCount ?? 0}（未达 ${rs.targetCandidates} 时必须补充搜索）`,
+        `其中 ≥75 分的宽松推荐数：${rs.strongMatchCount}（仅供参考，不计入达标）`,
+      ].filter(Boolean)
+    : [`目标高匹配岗位数：${input.goal.targetQualifiedJobs}`];
   return [
-    `目标高匹配岗位数：${input.goal.targetQualifiedJobs}`,
+    ...lines,
     `已搜索组合：${searched}`,
     `发现岗位：${rs.discoveredCount}`,
     `通过硬过滤：${rs.qualifiedCount}`,
     `≥75 分：${rs.strongMatchCount}`,
     `高频岗位名：${rs.topTitles.join('、') || '无'}`,
-    `被排除原因：${rs.rejectedReasons.join('；') || '无'}`,
+    `被过滤/不可联系原因：${(rs.rejectedSamples?.length ? rs.rejectedSamples : rs.rejectedReasons).join('；') || '无'}`,
     '',
     '请输出唯一 JSON。',
   ].join('\n');
@@ -284,20 +310,45 @@ export function expandReplanQueries(
   return { queries, dropped };
 }
 
+/** 是否使用 Autopilot 语义（调用方给了候选目标） */
+export function useAutopilotTarget(rs: ReplanResultSummary): boolean {
+  const target = Number(rs?.targetCandidates);
+  return Number.isFinite(target) && target > 0;
+}
+
 /** 调用模型做一次 Replan（程序先做"是否还允许 Replan"的判断） */
 export async function replanJobSearch(
   client: ModelClient,
   input: { goal: JobSearchGoal; searchedQueries: SearchQuery[]; resultSummary: ReplanResultSummary; replanCount: number },
 ): Promise<{ status: 'continue' | 'complete'; reason: string; newQueries: SearchQuery[] }> {
-  const target = input.goal.targetQualifiedJobs ?? DEFAULT_TARGET_QUALIFIED_JOBS;
-  if (input.resultSummary.strongMatchCount >= target) {
-    return { status: 'complete', reason: `已有 ${input.resultSummary.strongMatchCount} 个 ≥75 分岗位，达到目标 ${target}。`, newQueries: [] };
+  const rs = input.resultSummary;
+  const autopilotTarget = Number(rs.targetCandidates);
+
+  if (useAutopilotTarget(rs)) {
+    // Autopilot：只有"满足自动联系静态条件的候选数"达到候选目标才算够
+    const eligible = Number(rs.eligibleCount) || 0;
+    if (eligible >= autopilotTarget) {
+      return {
+        status: 'complete',
+        reason: `已有 ${eligible} 个 ≥${rs.minimumAutoGreetingScore ?? '设定'} 分可自动联系候选，达到候选目标 ${autopilotTarget}，无需补充搜索。`,
+        newQueries: [],
+      };
+    }
+  } else {
+    const target = input.goal.targetQualifiedJobs ?? DEFAULT_TARGET_QUALIFIED_JOBS;
+    if (rs.strongMatchCount >= target) {
+      return { status: 'complete', reason: `已有 ${rs.strongMatchCount} 个 ≥75 分岗位，达到目标 ${target}。`, newQueries: [] };
+    }
   }
   if ((input.replanCount ?? 0) >= 1) {
     return { status: 'complete', reason: '已达到 Replan 上限（最多 1 次），本轮结束。', newQueries: [] };
   }
 
-  const raw = (await client.chatJson(replanSchema, buildReplanSystem(input.goal), buildReplanUser(input))) as ReplanOutput;
+  const raw = (await client.chatJson(
+    replanSchema,
+    buildReplanSystem(input.goal, useAutopilotTarget(rs)),
+    buildReplanUser(input),
+  )) as ReplanOutput;
   if (raw.status === 'complete') {
     return { status: 'complete', reason: raw.reason || '模型判断无需补充搜索。', newQueries: [] };
   }

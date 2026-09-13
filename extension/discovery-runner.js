@@ -36,7 +36,9 @@ export { DETAIL_FETCH_LIMIT, MAX_REPLAN, DEFAULT_QUALIFIED_SCORE_THRESHOLD };
 
 /** @typedef {{
  *   discoveredCount: number, qualifiedCount: number, strongMatchCount: number,
- *   topTitles: string[], rejectedReasons: string[]
+ *   topTitles: string[], rejectedReasons: string[],
+ *   eligibleCount?: number, targetCandidates?: number, minimumAutoGreetingScore?: number,
+ *   roundIndex?: number, maxRounds?: number, rejectedSamples?: string[]
  * }} ResultSummary */
 
 /** 搜索 URL 构造（Side Panel 与 Background 共用同一规则） */
@@ -145,21 +147,56 @@ export function strongMatches(scoredJobs, threshold = DEFAULT_QUALIFIED_SCORE_TH
 }
 
 /** /replan 的 resultSummary（Review 与 Autopilot 共用同一口径） */
-/** @param {{discoveredCount?: number, qualifiedCount?: number, strongMatchCount?: number, topTitles?: string[], filteredOut?: number}} [input] @returns {ResultSummary} */
+/**
+ * @param {{
+ *   discoveredCount?: number, qualifiedCount?: number, strongMatchCount?: number,
+ *   topTitles?: string[], filteredOut?: number,
+ *   eligibleCount?: number, targetCandidates?: number, minimumAutoGreetingScore?: number,
+ *   roundIndex?: number, maxRounds?: number, rejectedSamples?: string[]
+ * }} [input]
+ * @returns {ResultSummary}
+ */
 export function buildResultSummary({
   discoveredCount = 0,
   qualifiedCount = 0,
   strongMatchCount = 0,
   topTitles = [],
   filteredOut = 0,
+  eligibleCount,
+  targetCandidates,
+  minimumAutoGreetingScore,
+  roundIndex,
+  maxRounds,
+  rejectedSamples = [],
 } = {}) {
-  return {
+  const summary = {
     discoveredCount,
     qualifiedCount,
     strongMatchCount,
     topTitles: (topTitles ?? []).slice(0, 8),
     rejectedReasons: [`命中排除词后累计移除 ${filteredOut} 个`],
   };
+  // Autopilot 上下文（只有调用方显式给出才带上，Review 保持 V0.4 语义）
+  if (Number.isFinite(Number(targetCandidates)) && Number(targetCandidates) > 0) {
+    summary.eligibleCount = Number(eligibleCount) || 0;
+    summary.targetCandidates = Number(targetCandidates);
+    if (Number.isFinite(Number(minimumAutoGreetingScore))) {
+      summary.minimumAutoGreetingScore = Number(minimumAutoGreetingScore);
+    }
+    if (Number.isFinite(Number(roundIndex))) summary.roundIndex = Number(roundIndex);
+    if (Number.isFinite(Number(maxRounds))) summary.maxRounds = Number(maxRounds);
+    if ((rejectedSamples ?? []).length) summary.rejectedSamples = rejectedSamples.slice(0, 5);
+  }
+  return summary;
+}
+
+/**
+ * 本轮要抓多少个详情：随候选目标缩放，而不是固定 15。
+ * 目标 2 → 6 个；目标 10 → 15 个（封顶 DETAIL_FETCH_LIMIT，最少 5 个）。
+ */
+export function detailBudgetForTarget(targetCandidates, hardLimit = DETAIL_FETCH_LIMIT) {
+  const target = Number(targetCandidates) || 0;
+  return Math.max(5, Math.min(hardLimit, target * 3));
 }
 
 /**
