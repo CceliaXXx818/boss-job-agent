@@ -1018,6 +1018,8 @@ function renderModeUi() {
   const mode = session.settings?.mode ?? 'review';
   $('modeReview').checked = mode === 'review';
   $('modeAutopilot').checked = mode === 'autopilot';
+  // 只有 Autopilot 模式才显示：设置 / 打招呼话术 / Policy 试算 / Autopilot 面板 / 运行状态
+  $('autopilotPanels').hidden = mode !== 'autopilot';
   const box = $('autopilotState');
   box.hidden = false;
   if (mode === 'autopilot') {
@@ -1030,7 +1032,7 @@ function renderModeUi() {
     box.className = 'muted small';
     box.textContent = '当前为 Review Mode：所有联系动作都需要你手动确认。';
   }
-  $('policyPreviewBox').hidden = mode !== 'autopilot';
+  // policyPreviewBox 由 autopilotPanels 容器统一控制显示，这里不再单独切换
 }
 
 function fillSettingsForm() {
@@ -1116,6 +1118,8 @@ function openConsent() {
   $('consentMsg').textContent = err;
   $('consentAgree').disabled = Boolean(err);
   $('consentOverlay').hidden = false;
+  // 授权完成前，界面上单选按钮保持"当前生效模式"（Review），避免出现"选了 Autopilot 但设置不可见"的错觉
+  renderModeUi();
 }
 
 function closeConsent() {
@@ -1152,6 +1156,8 @@ async function setMode(mode) {
   addActivity('Mode', '已切换到 Autopilot（本阶段仅规则预演，不自动执行）');
   renderModeUi();
   await renderAgentStatePanel();
+  // 面板刚显示出来，立刻拉一次状态，避免看到空数据
+  await refreshAutopilotStatus();
 }
 
 async function runPolicyPreview() {

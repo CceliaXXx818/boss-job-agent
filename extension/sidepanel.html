@@ -30,6 +30,8 @@
     <div id="autopilotState" class="muted small" hidden></div>
   </div>
 
+  <!-- 以下 5 块只在 Autopilot 模式下显示（由 sidepanel.js renderModeUi 控制） -->
+  <div id="autopilotPanels" hidden>
   <details class="activity" id="autopilotSettingsBox">
     <summary>Autopilot 设置</summary>
     <div class="settings-grid">
@@ -72,7 +74,7 @@
     </div>
   </details>
 
-  <details class="activity" id="policyPreviewBox" hidden>
+  <details class="activity" id="policyPreviewBox">
     <summary>Autopilot Policy 试算（不发送任何消息）</summary>
     <p class="muted small">对当前 Shortlist 逐条套用 12 条 Policy 规则，仅展示结果，不执行。</p>
     <div class="row"><button id="previewPolicy" class="btn-secondary">试算当前 Shortlist</button></div>
@@ -118,6 +120,8 @@
       <span id="stateMsg" class="muted small"></span>
     </div>
   </details>
+  </div>
+  <!-- ===== /Autopilot 面板 ===== -->
 
   <!-- ===== IDLE ===== -->
   <section id="stateIdle" class="state">

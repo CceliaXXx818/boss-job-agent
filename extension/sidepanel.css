@@ -135,3 +135,6 @@ input[type="number"] { width: 70px; }
 .state-chip.ok { color: #0f6b2f; background: #e9f8ee; }
 .state-chip.bad { color: var(--bad); background: #fdf3f3; }
 .state-chip.warn { color: var(--warn); background: #fff7ed; }
+
+/* ===== V0.5 Phase 3：Autopilot 专属面板（仅 Autopilot 模式显示） ===== */
+#autopilotPanels[hidden] { display: none !important; }
