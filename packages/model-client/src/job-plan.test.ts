@@ -64,8 +64,8 @@ describe('V0.4 Planner · normalizePlan（纯函数）', () => {
   });
 
   it('不支持的城市：给 warning 而不是猜 code', () => {
-    const { goal, warnings } = normalizePlan({ ...base, cities: [{ name: '成都' }] }, 'g');
-    expect(warnings.join('|')).toContain('成都');
+    const { goal, warnings } = normalizePlan({ ...base, cities: [{ name: '纽约' }] }, 'g');
+    expect(warnings.join('|')).toContain('纽约');
     expect(goal.cities).toEqual([]);
   });
 
