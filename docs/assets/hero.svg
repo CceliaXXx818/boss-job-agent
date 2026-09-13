@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="520" viewBox="0 0 1280 520" role="img" aria-labelledby="title desc">
+  <title id="title">BOSS Job Agent</title>
+  <desc id="desc">Goal-driven AI Job Agent: Goal to Plan to Search to Score to Replan to Outreach to Daily Report</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="55%" stop-color="#312e81"/>
+      <stop offset="100%" stop-color="#5b21b6"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="520" rx="28" fill="url(#bg)"/>
+  <circle cx="1115" cy="80" r="180" fill="#ffffff" opacity="0.04"/>
+  <circle cx="1160" cy="450" r="240" fill="#22d3ee" opacity="0.05"/>
+  <text x="80" y="125" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="64" font-weight="800" fill="#ffffff">BOSS Job Agent</text>
+  <text x="80" y="180" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="26" font-weight="500" fill="#c4b5fd">Goal-driven job search · Review Mode + Autopilot</text>
+  <rect x="80" y="230" width="1120" height="2" fill="url(#accent)" opacity="0.8"/>
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="650">
+    <rect x="80" y="286" width="120" height="64" rx="16" fill="#172554" stroke="#38bdf8" stroke-opacity="0.5"/>
+    <text x="140" y="327" text-anchor="middle" fill="#e0f2fe">Goal</text>
+    <text x="222" y="326" fill="#94a3b8">→</text>
+    <rect x="250" y="286" width="120" height="64" rx="16" fill="#1e1b4b" stroke="#818cf8" stroke-opacity="0.5"/>
+    <text x="310" y="327" text-anchor="middle" fill="#e0e7ff">Plan</text>
+    <text x="392" y="326" fill="#94a3b8">→</text>
+    <rect x="420" y="286" width="130" height="64" rx="16" fill="#1e1b4b" stroke="#818cf8" stroke-opacity="0.5"/>
+    <text x="485" y="327" text-anchor="middle" fill="#e0e7ff">Search</text>
+    <text x="572" y="326" fill="#94a3b8">→</text>
+    <rect x="600" y="286" width="120" height="64" rx="16" fill="#2e1065" stroke="#a78bfa" stroke-opacity="0.6"/>
+    <text x="660" y="327" text-anchor="middle" fill="#ede9fe">Score</text>
+    <text x="742" y="326" fill="#94a3b8">→</text>
+    <rect x="770" y="286" width="140" height="64" rx="16" fill="#2e1065" stroke="#c084fc" stroke-opacity="0.6"/>
+    <text x="840" y="327" text-anchor="middle" fill="#f3e8ff">Replan</text>
+    <text x="932" y="326" fill="#94a3b8">→</text>
+    <rect x="960" y="286" width="160" height="64" rx="16" fill="#3b0764" stroke="#d8b4fe" stroke-opacity="0.6"/>
+    <text x="1040" y="327" text-anchor="middle" fill="#fae8ff">Outreach</text>
+  </g>
+  <text x="80" y="420" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="23" fill="#cbd5e1">Bounded autonomy · Persistent state · Action queue · Event store · Daily report</text>
+  <text x="80" y="462" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" fill="#94a3b8">LLM decides WHAT · Browser tools decide HOW · Policy decides WHETHER</text>
+</svg>

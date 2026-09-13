@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a product or agent improvement
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      placeholder: Describe the user problem before the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Discovery / Search
+        - AI Matching
+        - Replan
+        - Review Mode
+        - Autopilot
+        - Policy / Safety
+        - Daily Report
+        - UI / UX
+        - Documentation
+        - Other

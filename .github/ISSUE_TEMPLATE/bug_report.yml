@@ -1,0 +1,45 @@
+name: Bug report
+description: Report something that is not working as expected
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve BOSS Job Agent. Please redact personal information from screenshots and logs.
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - Review Mode
+        - Autopilot Mode
+        - Both / unsure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: v0.5.0 or commit hash
+  - type: input
+    id: chrome
+    attributes:
+      label: Chrome version
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Agent Activity / logs
+      description: Remove personal data, cookies, tokens and API keys.
