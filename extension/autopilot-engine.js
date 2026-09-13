@@ -36,6 +36,8 @@ import {
 import {
   attachScores,
   buildResultSummary,
+  decideReplanForCandidates,
+  filterAutopilotEligible,
   buildSearchUrl,
   decideAfterRound,
   dedupeQueries,
@@ -43,7 +45,6 @@ import {
   mergeDetail,
   mergeReplanQueries,
   mergeSearchRows,
-  needsReplan,
   pickDetailTargets,
   pickOutreachCandidates,
   resolveHardExclusions,
@@ -460,7 +461,11 @@ export function createAutopilotEngine(deps) {
         replanCount: 0,
         hardExclusions,
         browserContext: context ?? rt.browserContext,
-        currentRoundStats: { ...emptyRoundStats(rt.roundIndex), searchedQueries: [] },
+        currentRoundStats: {
+          ...emptyRoundStats(rt.roundIndex),
+          searchedQueries: [],
+          roundTarget: Number(rt.batchQualifiedTarget) || 0,
+        },
         roundDiscovered: [],
         roundQualified: [],
         detailTargets: [],
@@ -468,6 +473,7 @@ export function createAutopilotEngine(deps) {
         detailBuffer: [],
         scoredBuffer: [],
         recommendedJobIds: [],
+        eligibleJobIds: [],
         outreachQueue: [],
         actionsCreatedFor: [],
         log: appendLog(rt, `Discovery Round ${rt.roundIndex} started`),
@@ -618,31 +624,66 @@ export function createAutopilotEngine(deps) {
   }
 
   async function stepEvaluate(rt) {
-    const strong = strongMatches(rt.scoredBuffer ?? []);
-    const target = Number(rt.currentPlan?.successCriteria?.targetQualifiedJobs) || rt.batchQualifiedTarget || DEFAULT_TARGET_QUALIFIED;
-    const recommended = strong.slice(0, Math.max(1, rt.batchQualifiedTarget || DEFAULT_TARGET_QUALIFIED));
+    // Recommended = AI 打分到推荐线（≥75）的岗位；只是"看起来匹配"
+    const recommended = strongMatches(rt.scoredBuffer ?? []);
+    // Autopilot Eligible = 满足自动联系静态条件的岗位（阈值 85 / 未硬排除 / 未联系过 / 信息完整 / 话术可用）
+    const settings = await deps.settings.loadSettings();
+    const history = await deps.records.getGreetedHistory();
+    let greetingValid = true;
+    try {
+      deps.greeting.buildGreetingMessage({
+        job: { jobId: 'evaluate' },
+        greetingStrategy: settings.greetingStrategy,
+      });
+    } catch {
+      greetingValid = false;
+    }
+    const { eligible, rejected } = filterAutopilotEligible(recommended, {
+      minimumAutoGreetingScore: rt.minimumAutoGreetingScore ?? settings.minimumAutoGreetingScore,
+      hardExclusions: rt.hardExclusions ?? [],
+      greetedJobIds: [...history],
+      greetingValid,
+    });
+
+    // 目标只认用户在设置里的 batchQualifiedTarget（不再使用 Planner 的 successCriteria.targetQualifiedJobs）
+    const target = Number(rt.batchQualifiedTarget) || Number(settings.batchQualifiedTarget) || DEFAULT_TARGET_QUALIFIED;
 
     if (recommended.length) {
       await deps.records.recordJobsShortlisted({ jobs: recommended, mode: 'autopilot', at: now() });
     }
-    activity(`Recommended ${recommended.length} 个（目标 ${target}）`);
 
-    const stats = { ...rt.currentRoundStats, recommendedCount: recommended.length };
+    // 三个概念都可观察：Recommended / Autopilot Eligible / Round Target
+    activity(`Recommended ${recommended.length}`);
+    activity(`Autopilot Eligible ${eligible.length} / Target ${target}`);
+    if (rejected.length && !eligible.length) {
+      activity(`→ 暂无可自动联系候选，示例原因：${rejected[0].reason}`);
+    }
+
+    const decision = decideReplanForCandidates({
+      eligibleCount: eligible.length,
+      targetCandidates: target,
+      replanCount: rt.replanCount ?? 0,
+      maxReplan: rt.maxReplanPerRound ?? 1,
+    });
+    activity(`→ ${decision.reason}`);
+
+    const stats = {
+      ...rt.currentRoundStats,
+      recommendedCount: recommended.length,
+      eligibleCount: eligible.length,
+      roundTarget: target,
+    };
     const patch = {
       recommendedJobIds: recommended.map((j) => j.jobId),
-      scoredBuffer: recommended,
+      eligibleJobIds: eligible.map((j) => j.jobId),
       currentRoundStats: stats,
-      log: appendLog(rt, `Recommended ${recommended.length}`),
+      log: appendLog(
+        rt,
+        `Recommended ${recommended.length}｜Eligible ${eligible.length} / Target ${target}｜${decision.skipReplan ? 'skip Replan' : 'Replan'}`,
+      ),
     };
 
-    if (
-      needsReplan({
-        qualifiedCount: recommended.length,
-        targetQualifiedJobs: target,
-        replanCount: rt.replanCount ?? 0,
-        maxReplan: rt.maxReplanPerRound ?? 1,
-      })
-    ) {
+    if (!decision.skipReplan) {
       return { patch, nextStep: AUTOPILOT_STEPS.REPLAN };
     }
     return { patch, nextStep: AUTOPILOT_STEPS.OUTREACH_CREATE };
@@ -705,10 +746,24 @@ export function createAutopilotEngine(deps) {
     const settings = await deps.settings.loadSettings();
     const history = await deps.records.getGreetedHistory();
     const alreadyGreeted = [...history];
+    // 候选池 = Autopilot Eligible（静态条件已在 EVALUATE 阶段筛过；这里用最新数据重算一次）
+    let greetingValid = true;
+    try {
+      deps.greeting.buildGreetingMessage({ job: { jobId: 'outreach' }, greetingStrategy: settings.greetingStrategy });
+    } catch {
+      greetingValid = false;
+    }
+    const recommended = strongMatches(rt.scoredBuffer ?? []);
+    const { eligible } = filterAutopilotEligible(recommended, {
+      minimumAutoGreetingScore: rt.minimumAutoGreetingScore ?? settings.minimumAutoGreetingScore,
+      hardExclusions: rt.hardExclusions ?? [],
+      greetedJobIds: alreadyGreeted,
+      greetingValid,
+    });
     // 注意：候选不做 cap 截断后再评估 —— 否则"超 cap 被拒"的原因会被隐藏。
     // 这里按单轮候选上限取候选，Policy 逐个判定，只把前 remaining 个放入队列。
     const budget = Math.min(remaining, MAX_ACTIONS_PER_ROUND);
-    const candidates = pickOutreachCandidates(rt.scoredBuffer ?? [], {
+    const candidates = pickOutreachCandidates(eligible, {
       remaining: Math.max(budget, MAX_ACTIONS_PER_ROUND),
       alreadyQueued: rt.actionsCreatedFor ?? [],
       alreadyGreeted,
@@ -962,6 +1017,7 @@ export function createAutopilotEngine(deps) {
         detailBuffer: [],
         scoredBuffer: [],
         recommendedJobIds: [],
+        eligibleJobIds: [],
         outreachQueue: [],
         actionsCreatedFor: [],
         replanCount: 0,
@@ -1173,6 +1229,8 @@ export function createAutopilotEngine(deps) {
       currentQuery,
       searchedQueries: (rt.searchedQueries ?? []).map((q) => q.keyword),
       recommended: (rt.recommendedJobIds ?? []).length,
+      eligible: (rt.eligibleJobIds ?? []).length,
+      roundTarget: rt.currentRoundStats?.roundTarget ?? rt.batchQualifiedTarget ?? null,
       todayGreetingCount: daily.effective,
       dailyGreetingCap: rt.dailyGreetingCap,
       queue,

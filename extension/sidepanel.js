@@ -806,6 +806,7 @@ export async function refreshAutopilotStatus() {
   $('apRound').textContent = `${res.roundIndex ?? 0} / ${res.maxDiscoveryRounds ?? 3}`;
   $('apQuery').textContent = res.currentQuery ?? '—';
   $('apRecommended').textContent = String(res.recommended ?? 0);
+  $('apEligible').textContent = `${res.eligible ?? 0} / ${res.roundTarget ?? 0}`;
   const q = res.queue ?? {};
   $('apQueue').textContent = `pending ${q.pending ?? 0} / executing ${q.executing ?? 0} / success ${q.success ?? 0}`;
   $('apStep').textContent = res.step && res.step !== 'NONE' ? res.step : '—';

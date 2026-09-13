@@ -116,10 +116,10 @@ describe('Discovery 纯函数（Review 与 Autopilot 共用）', () => {
     expect(summary.rejectedReasons[0]).toContain('8');
   });
 
-  it('needsReplan：达标数不足且未超 Replan 上限才需要补充', () => {
-    expect(needsReplan({ qualifiedCount: 3, targetQualifiedJobs: 10, replanCount: 0, maxReplan: 1 })).toBe(true);
-    expect(needsReplan({ qualifiedCount: 3, targetQualifiedJobs: 10, replanCount: 1, maxReplan: 1 })).toBe(false);
-    expect(needsReplan({ qualifiedCount: 10, targetQualifiedJobs: 10, replanCount: 0, maxReplan: 1 })).toBe(false);
+  it('needsReplan：已达候选目标就跳过；不足且未用尽才补充（Autopilot 语义）', () => {
+    expect(needsReplan({ eligibleCount: 1, targetCandidates: 2, replanCount: 0, maxReplan: 1 })).toBe(true);
+    expect(needsReplan({ eligibleCount: 1, targetCandidates: 2, replanCount: 1, maxReplan: 1 })).toBe(false);
+    expect(needsReplan({ eligibleCount: 2, targetCandidates: 2, replanCount: 0, maxReplan: 1 })).toBe(false);
   });
 
   it('mergeReplanQueries：只允许新增 keyword，重复词被丢弃', () => {

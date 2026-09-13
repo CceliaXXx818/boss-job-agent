@@ -14,7 +14,6 @@ import {
   mergeHardExclusions,
   selectDetailTargets,
   rankJobs,
-  shouldReplan,
   applyReplanQueries,
   MAX_REPLAN,
   DETAIL_FETCH_LIMIT,
@@ -163,10 +162,108 @@ export function buildResultSummary({
   };
 }
 
-/** 是否触发 Replan（沿 V0.4 规则：达标数不足 且 本阶段还没 Replan 过） */
-/** @param {{qualifiedCount: number, targetQualifiedJobs: number, replanCount: number, maxReplan?: number}} input @returns {boolean} */
-export function needsReplan({ qualifiedCount, targetQualifiedJobs, replanCount, maxReplan = MAX_REPLAN }) {
-  return shouldReplan({ qualifiedCount, targetQualifiedJobs, replanCount, maxReplan });
+/**
+ * AI 推荐（recommendedJobs）与"可自动联系候选"（autopilotEligibleJobs）的**静态条件**判定。
+ *
+ * 概念拆分（V0.5 Phase 3 修复）：
+ *   recommendedJobs       = AI 打分到推荐线（≥75，tier=apply/hot）的岗位 —— 只是"看起来匹配"
+ *   autopilotEligibleJobs = 真正满足自动联系**静态条件**的岗位：
+ *       ① score >= minimumAutoGreetingScore（用户在设置里定的阈值，例如 85）
+ *       ② 未命中硬排除（hardExclusions）
+ *       ③ 此前没有联系过（greetedHistory / GREETING_SENT）
+ *       ④ 岗位信息完整（有 jobId 与 href）
+ *       ⑤ 打招呼话术可用（greetingValid）
+ *   动态条件（每日上限、工作时间、暂停、平台健康）不在这里判断，它们属于 Outreach 时的 Policy。
+ *
+ * Replan 的推进判断只看 autopilotEligibleJobs（不是含义模糊的 recommendedJobs）。
+ *
+ * @param {JobRow[]} jobs
+ * @param {{minimumAutoGreetingScore?: number, hardExclusions?: string[], greetedJobIds?: string[], greetingValid?: boolean}} [opts]
+ * @returns {{eligible: JobRow[], rejected: Array<{jobId: string, reason: string}>}}
+ */
+export function filterAutopilotEligible(jobs, {
+  minimumAutoGreetingScore = 80,
+  hardExclusions = [],
+  greetedJobIds = [],
+  greetingValid = true,
+} = {}) {
+  const greeted = new Set(greetedJobIds ?? []);
+  const eligible = [];
+  const rejected = [];
+  for (const job of jobs ?? []) {
+    if (!greetingValid) {
+      rejected.push({ jobId: job?.jobId ?? '?', reason: '打招呼话术不可用' });
+      continue;
+    }
+    if (!job?.jobId || !job?.href) {
+      rejected.push({ jobId: job?.jobId ?? '?', reason: '岗位信息不完整（缺 jobId/href）' });
+      continue;
+    }
+    if (!job.__ai?.ok) {
+      rejected.push({ jobId: job.jobId, reason: '没有可用的 AI 评分' });
+      continue;
+    }
+    const score = Number(job.__ai.score);
+    if (!Number.isFinite(score) || score < Number(minimumAutoGreetingScore)) {
+      rejected.push({ jobId: job.jobId, reason: `分数 ${score} < 自动联系阈值 ${minimumAutoGreetingScore}` });
+      continue;
+    }
+    if (greeted.has(job.jobId)) {
+      rejected.push({ jobId: job.jobId, reason: '此前已联系过' });
+      continue;
+    }
+    const rule = hardFilter(job, hardExclusions);
+    if (!rule.pass) {
+      rejected.push({ jobId: job.jobId, reason: rule.reason ?? '命中硬排除' });
+      continue;
+    }
+    eligible.push(job);
+  }
+  return { eligible, rejected };
+}
+
+/**
+ * 候选目标是否已达成的判断（Autopilot 语义：只认设置的 batchQualifiedTarget）。
+ *
+ * 规则：
+ *   eligible >= target                    → SKIP REPLAN → 直接 OUTREACH
+ *   eligible <  target 且还没 Replan 过    → 允许 Replan 一次
+ *   eligible <  target 但 Replan 已用尽    → 继续 OUTREACH（不再补充搜索）
+ *
+ * @param {{eligibleCount: number, targetCandidates: number, replanCount?: number, maxReplan?: number}} input
+ * @returns {{skipReplan: boolean, code: 'TARGET_REACHED'|'NEED_MORE'|'REPLAN_EXHAUSTED', reason: string}}
+ */
+export function decideReplanForCandidates({ eligibleCount, targetCandidates, replanCount = 0, maxReplan = MAX_REPLAN }) {
+  const eligible = Number(eligibleCount) || 0;
+  const target = Number(targetCandidates) || 0;
+  if (target > 0 && eligible >= target) {
+    return {
+      skipReplan: true,
+      code: 'TARGET_REACHED',
+      reason: `Candidate target reached（Autopilot Eligible ${eligible} / Target ${target}），skip Replan`,
+    };
+  }
+  if (Number(replanCount) >= Number(maxReplan)) {
+    return {
+      skipReplan: true,
+      code: 'REPLAN_EXHAUSTED',
+      reason: `Autopilot Eligible ${eligible} / Target ${target}：未达候选目标，但本阶段 Replan 已用尽，直接进入 Outreach`,
+    };
+  }
+  return {
+    skipReplan: false,
+    code: 'NEED_MORE',
+    reason: `Autopilot Eligible ${eligible} / Target ${target}：候选不足，触发 Replan`,
+  };
+}
+
+/**
+ * @deprecated 只保留给 Review 侧的旧语义调用；Autopilot 请用 decideReplanForCandidates。
+ * @param {{eligibleCount: number, targetCandidates: number, replanCount: number, maxReplan?: number}} input
+ * @returns {boolean}
+ */
+export function needsReplan({ eligibleCount, targetCandidates, replanCount, maxReplan = MAX_REPLAN }) {
+  return decideReplanForCandidates({ eligibleCount, targetCandidates, replanCount, maxReplan }).skipReplan === false;
 }
 
 /**

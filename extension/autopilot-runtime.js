@@ -114,6 +114,7 @@ export function emptyRuntime(now = new Date()) {
     detailBuffer: [],
     scoredBuffer: [],
     recommendedJobIds: [],
+    eligibleJobIds: [],
     outreachQueue: [],
     actionsCreatedFor: [],
 
@@ -148,6 +149,8 @@ export function emptyRoundStats(roundIndex) {
     filteredCount: 0,
     analyzedCount: 0,
     recommendedCount: 0,
+    eligibleCount: 0,
+    roundTarget: 0,
     replanCount: 0,
   };
 }
