@@ -2,8 +2,33 @@
   "_说明": "把你的个人画像填到这里(复制为 config/candidate.json 再改，该文件不会提交)。AI 打分、匹配都依赖这里。",
   "experienceYears": 5,
   "aiProductYears": 2,
-  "evidenceProjects": ["智能客服助手产品0-1", "RAG知识库问答产品", "语音外呼产品"],
-  "preferredSkills": ["LLM", "Agent", "RAG", "Prompt Engineering", "智能客服", "对话式AI"],
-  "targetTitles": ["AI产品经理", "Agent产品经理", "大模型产品经理"],
-  "excludeTokens": ["数据标注", "AI运营", "训练运营", "销售", "驻外", "外派", "纯运营", "标注"]
+  "evidenceProjects": [
+    "智能客服助手产品0-1",
+    "RAG知识库问答产品",
+    "语音外呼产品"
+  ],
+  "preferredSkills": [
+    "LLM",
+    "Agent",
+    "RAG",
+    "Prompt Engineering",
+    "智能客服",
+    "对话式AI"
+  ],
+  "targetTitles": [
+    "AI产品经理",
+    "Agent产品经理",
+    "大模型产品经理"
+  ],
+  "hardExclusions": [
+    "数据标注",
+    "AI运营",
+    "训练运营",
+    "销售",
+    "驻外",
+    "外派",
+    "纯运营",
+    "标注"
+  ],
+  "softNegativePreferences": []
 }

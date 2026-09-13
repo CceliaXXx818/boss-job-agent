@@ -42,10 +42,11 @@ const liveProduce = isLiveMode();
 
 describe('V0.4 Planner · normalizePlan（纯函数）', () => {
   const base: PlannerOutput = {
-    cities: [{ name: '上海' }], // 与 Browser Context 一致 → 无冲突 warning
+    mentionedCities: ['上海'], // 与 Browser Context 一致 → 无冲突 warning
     targetTitles: ['AI产品经理'],
     preferredSkills: ['Agent', 'LLM'],
-    excludeTokens: ['外包', '售前', '纯运营'],
+    hardExclusions: ['外包'],
+    softNegativePreferences: ['售前属性过强'],
     salaryMinK: 30,
     targetQualifiedJobs: 10,
     dailyGreetingCap: 5,
@@ -63,7 +64,7 @@ describe('V0.4 Planner · normalizePlan（纯函数）', () => {
 
   it('Goal 提到的城市与当前 BOSS 城市冲突 → warning（不自动切城市）', () => {
     const { goal, warnings, mentionedCities } = normalizePlan(
-      { ...base, cities: [{ name: '杭州' }] },
+      { ...base, mentionedCities: ['杭州'] },
       '杭州AI产品经理',
       CTX,
     );
@@ -74,7 +75,7 @@ describe('V0.4 Planner · normalizePlan（纯函数）', () => {
   });
 
   it('Goal 未提城市 → 无冲突 warning', () => {
-    const { warnings } = normalizePlan({ ...base, cities: [] }, 'AI产品经理', CTX);
+    const { warnings } = normalizePlan({ ...base, mentionedCities: [] }, 'AI产品经理', CTX);
     expect(warnings).toEqual([]);
   });
 
@@ -147,10 +148,13 @@ describe('V0.4 Planner · 真模型解析自然语言目标', () => {
       expect(plan.queries.every((q) => q.cityCode === '101020100')).toBe(true);
       // 薪资与排除项（硬约束原样提取，不能被放宽）
       expect(plan.goal.salaryMinK).toBe(30);
-      const ex = plan.goal.excludeTokens.join('|');
-      expect(ex).toContain('外包');
-      expect(ex).toContain('售前');
-      expect(ex).toMatch(/运营/);
+      const hard = plan.goal.hardExclusions.join('|');
+      const soft = plan.goal.softNegativePreferences.join('|');
+      // 该句是"不要外包、售前、纯运营"——明确否定，因此都属于 hard
+      expect(hard).toContain('外包');
+      expect(hard).toMatch(/售前|运营/);
+      expect(Array.isArray(plan.goal.softNegativePreferences)).toBe(true);
+      expect(soft).toBeDefined();
       // 查询数量受限 + 全部初始
       expect(plan.queries.length).toBeGreaterThan(0);
       expect(plan.queries.length).toBeLessThanOrEqual(MAX_INITIAL_QUERIES);
@@ -174,7 +178,8 @@ const GOAL: JobSearchGoal = {
   ],
   targetTitles: ['AI产品经理', 'Agent产品经理'],
   preferredSkills: ['Agent', 'LLM'],
-  excludeTokens: ['外包', '售前', '纯运营'],
+  hardExclusions: ['外包', '售前', '纯运营'],
+  softNegativePreferences: [],
   salaryMinK: 30,
   targetQualifiedJobs: 10,
   dailyGreetingCap: 5,
@@ -234,7 +239,7 @@ describe('V0.4 Replan · 程序护栏（不依赖模型）', () => {
       expect(Object.keys(q).sort()).toEqual(['cityCode', 'cityName', 'keyword', 'source']);
     }
     expect(GOAL.salaryMinK).toBe(30);
-    expect(GOAL.excludeTokens).toContain('外包');
+    expect(GOAL.hardExclusions).toContain('外包');
   });
 });
 
@@ -266,5 +271,48 @@ describe('V0.4 Replan · 真模型（结果不足 → 补充搜索词）', () =>
       expect(q.source).toBe('replan');
       expect(GOAL.cities.some((c) => c.code === q.cityCode)).toBe(true);
     }
+  }, 120_000);
+});
+
+
+// ---------- V0.4.1：hard / soft 分离边界（真模型语料） ----------
+
+describe('V0.4.1 Planner · hardExclusions vs softNegativePreferences', () => {
+  maybeIt('“不要外包，也不接受长期出差，最好别太偏售前” → hard=外包/长期出差，soft=售前', async () => {
+    const client = new ModelClient();
+    const plan = await vcrCall({
+      file: PLAN_VCR,
+      id: 'plan-hard-soft',
+      live: liveProduce,
+      produce: () =>
+        planJobSearch(
+          client,
+          'AI产品经理，偏Agent和平台型产品，30K以上，不要外包，也不接受长期出差，最好别太偏售前。',
+          CTX,
+        ),
+    });
+    const hard = plan.goal.hardExclusions.join('|');
+    const soft = plan.goal.softNegativePreferences.join('|');
+    expect(hard).toContain('外包');
+    expect(hard).toMatch(/长期出差|出差/);
+    expect(hard).not.toContain('售前'); // 弱否定不得升格为 hard
+    expect(soft).toMatch(/售前/);
+    expect(plan.goal.salaryMinK).toBe(30);
+  }, 120_000);
+
+  maybeIt('“不要驻场，可以接受少量售前沟通，偶尔出差可以” → hard=驻场；售前/出差不得排除', async () => {
+    const client = new ModelClient();
+    const plan = await vcrCall({
+      file: PLAN_VCR,
+      id: 'plan-negation-boundary',
+      live: liveProduce,
+      produce: () =>
+        planJobSearch(client, 'Agent产品经理，不要驻场，不考虑乙方交付，可以接受少量售前沟通，偶尔出差可以。', CTX),
+    });
+    const hard = plan.goal.hardExclusions.join('|');
+    const soft = plan.goal.softNegativePreferences.join('|');
+    expect(hard).toMatch(/驻场/);
+    expect(hard).not.toMatch(/售前|出差/); // 「可以接受售前」「偶尔出差可以」不能被当成排除
+    expect(soft).not.toMatch(/售前/);
   }, 120_000);
 });

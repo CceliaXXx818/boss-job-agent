@@ -8,9 +8,10 @@ import {
 } from '../../../extension/core-logic.js';
 
 /**
- * V0.4 Planner：自然语言 Goal → 结构化 Plan。
- * 纪律：LLM 只负责"理解 + 生成搜索词/关键词"，城市必须落在支持列表内，
- * 用户硬约束（薪资/排除项/上限）只允许被原样提取，不允许被模型改写或放宽。
+ * V0.4.1 Planner / Replan
+ * - 城市来自 Browser Context（当前 BOSS 页面），Planner 不再输出 cityCode
+ * - 负向约束拆两层：hardExclusions（用户明确否定）/ softNegativePreferences（弱偏好或合理推断）
+ * - 程序只允许：新增搜索词、调整排序；绝不放宽用户明确限制
  */
 
 export interface CityRef {
@@ -18,12 +19,18 @@ export interface CityRef {
   code: string;
 }
 
+export interface BrowserContext {
+  cityName: string;
+  cityCode: string;
+}
+
 export interface JobSearchGoal {
   rawGoal: string;
   cities: CityRef[];
   targetTitles: string[];
   preferredSkills: string[];
-  excludeTokens: string[];
+  hardExclusions: string[];
+  softNegativePreferences: string[];
   salaryMinK: number | null;
   targetQualifiedJobs: number;
   dailyGreetingCap: number;
@@ -43,11 +50,12 @@ export interface AgentPlan {
 }
 
 export const plannerSchema = z.object({
-  cities: z.array(z.object({ name: z.string() })).min(1),
+  mentionedCities: z.array(z.string()).default([]),
   targetTitles: z.array(z.string()).default([]),
   preferredSkills: z.array(z.string()).default([]),
-  excludeTokens: z.array(z.string()).default([]),
   salaryMinK: z.number().int().positive().nullable().default(null),
+  hardExclusions: z.array(z.string()).default([]),
+  softNegativePreferences: z.array(z.string()).default([]),
   targetQualifiedJobs: z.number().int().min(1).max(50).default(DEFAULT_TARGET_QUALIFIED_JOBS),
   dailyGreetingCap: z.number().int().min(1).max(10).default(5),
   keywords: z.array(z.string()).min(1),
@@ -59,21 +67,33 @@ export function buildPlannerSystem(): string {
   return [
     '你是求职搜索规划器。从用户的一句话目标中提取结构化搜索计划，只输出 JSON。',
     '',
-    '【必须提取】',
-    '- cities：用户提到的求职城市（只写名称）',
+    '【输出字段】',
+    '- mentionedCities：用户在目标中明确提到的城市名（如 ["杭州"]）；没提到就 []。不要输出任何 cityCode。',
     '- targetTitles：目标岗位名称（如 AI产品经理 / Agent产品经理）',
-    '- preferredSkills：偏好技能或方向（如 Agent、LLM、RAG）',
-    '- excludeTokens：用户明确不要的（原样保留，如 外包、售前、纯运营）',
+    '- preferredSkills：偏好技能或方向（如 Agent、LLM、平台型产品）',
     '- salaryMinK：薪资下限，单位 K；没说就 null（例：30K以上 → 30）',
+    '- hardExclusions：**硬排除**，只允许来自用户明确否定',
+    '- softNegativePreferences：**弱负向偏好**，来自用户弱否定或对整体目标的合理推断',
     '- targetQualifiedJobs：用户要求的高匹配岗位数量，没说就 10',
     '- dailyGreetingCap：用户提到的每日上限，没说就 5',
     '- keywords：搜索关键词，3~6 个，优先高召回（例：AI产品经理、Agent产品经理、大模型产品经理）',
     '',
-    '【硬性规则】',
-    '- 城市由浏览器上下文决定：不要输出 cityCode；若用户在目标中明确提到城市，只把城市名写入 cities[].name（用于冲突提示）',
-    '- 禁止修改、放宽或删除用户给出的硬约束（薪资/排除项/上限）',
-    '- 不要生成大量长尾关键词；keywords 最多 6 个',
-    '- 只输出 JSON，结构：{"cities":[{"name":""}],"targetTitles":[],"preferredSkills":[],"excludeTokens":[],"salaryMinK":null,"targetQualifiedJobs":10,"dailyGreetingCap":5,"keywords":[]}',
+    '【hardExclusions 规则（强约束）】',
+    '- 只有出现明确否定语义才可写入：不要 / 不接受 / 不考虑 / 拒绝 / 必须排除 / 不做 / 不能接受',
+    '- 例：“不要外包，不接受长期出差，不考虑销售” → ["外包","长期出差","销售"]',
+    '- 禁止把模型自己推测的内容升级为 hardExclusions',
+    '',
+    '【softNegativePreferences 规则（弱约束）】',
+    '- 出现弱否定或偏好性表述时写入：不太想 / 最好不要 / 别太偏 / 不是很喜欢 / 希望少一些 / 优先避免',
+    '- 也可以对整体目标做合理推断（例如"想做核心 AI 产品，偏 Agent 平台"→ ["纯实施","交付属性过强"]）',
+    '- 但这类内容**绝不允许**写进 hardExclusions',
+    '- 反例：“可以接受少量售前沟通” → 不能识别为负向偏好，soft 与 hard 都为空',
+    '',
+    '【城市】',
+    '- 城市由浏览器上下文决定；你只负责把用户提到的城市名放进 mentionedCities，用于冲突提示',
+    '',
+    '【输出格式（严格 JSON，不要解释）】',
+    '{"mentionedCities":[],"targetTitles":[],"preferredSkills":[],"salaryMinK":null,"hardExclusions":[],"softNegativePreferences":[],"targetQualifiedJobs":10,"dailyGreetingCap":5,"keywords":[]}',
   ].join('\n');
 }
 
@@ -81,24 +101,24 @@ export function buildPlannerUser(rawGoal: string): string {
   return `用户目标：${rawGoal}\n请输出唯一 JSON。`;
 }
 
-/**
- * 纯函数：把 Planner 输出规范化为 Plan。
- * V0.4.1：城市来自 Browser Context（当前 BOSS 页面），Planner 不再提供 cityCode；
- * 若用户 Goal 提到的城市与当前上下文不一致，返回 conflict 由调用方停止并提示用户。
- */
-export interface BrowserContext {
-  cityName: string;
-  cityCode: string;
-}
+// ---------------------------------------------------------------------------
+// Plan 规范化（纯函数）
+// ---------------------------------------------------------------------------
 
 export function normalizePlan(
   raw: PlannerOutput,
   rawGoal: string,
   context: BrowserContext,
-): { goal: JobSearchGoal; queries: SearchQuery[]; warnings: string[]; mentionedCities: string[] } {
+): {
+  goal: JobSearchGoal;
+  queries: SearchQuery[];
+  warnings: string[];
+  mentionedCities: string[];
+  conflict: { conflict: boolean; others: string[] };
+} {
   const warnings: string[] = [];
-  const mentionedCities = (raw.cities ?? [])
-    .map((c) => String(c?.name ?? '').trim().replace(/市$/, ''))
+  const mentionedCities = (raw.mentionedCities ?? [])
+    .map((c) => String(c ?? '').trim().replace(/市$/, ''))
     .filter(Boolean);
   const contextCity = String(context.cityName ?? '').trim().replace(/市$/, '');
   const others = mentionedCities.filter((c) => c && c !== contextCity);
@@ -114,25 +134,38 @@ export function normalizePlan(
     if (v && !keywords.includes(v)) keywords.push(v);
   }
 
+  // 防御：soft 绝不能出现在 hard 中（即使模型违反，程序也拆开）
+  const hard = uniqStrings(raw.hardExclusions ?? []);
+  const soft = uniqStrings(raw.softNegativePreferences ?? []).filter((t) => !hard.includes(t));
+
   const goal: JobSearchGoal = {
     rawGoal,
     cities: [{ name: contextCity, code: context.cityCode }],
     targetTitles: raw.targetTitles ?? [],
     preferredSkills: raw.preferredSkills ?? [],
-    excludeTokens: raw.excludeTokens ?? [],
+    hardExclusions: hard,
+    softNegativePreferences: soft,
     salaryMinK: raw.salaryMinK ?? null,
     targetQualifiedJobs: raw.targetQualifiedJobs ?? DEFAULT_TARGET_QUALIFIED_JOBS,
     dailyGreetingCap: raw.dailyGreetingCap ?? 5,
   };
 
-  // 搜索任务：全部继承 Browser Context 城市；关键词数量受限
   const queries: SearchQuery[] = [];
   for (const keyword of keywords) {
     if (queries.length >= MAX_INITIAL_QUERIES) break;
     queries.push({ cityName: contextCity, cityCode: context.cityCode, keyword, source: 'initial' });
   }
 
-  return { goal, queries, warnings, mentionedCities };
+  return { goal, queries, warnings, mentionedCities, conflict: { conflict: others.length > 0, others } };
+}
+
+function uniqStrings(arr: string[]): string[] {
+  const out: string[] = [];
+  for (const x of arr) {
+    const v = String(x ?? '').trim();
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out;
 }
 
 /** 调用模型生成 Plan（唯一入口） */
@@ -161,10 +194,8 @@ export async function planJobSearch(
   };
 }
 
-
 // ---------------------------------------------------------------------------
-// V0.4 Replan：只允许"新增 keyword"。城市/薪资/排除项/每日上限一律以原 goal 为准，
-// 模型即使返回这些字段也会被忽略；结果已达标或超过上限时直接 complete（不调模型）。
+// Replan：只允许新增 keyword；城市/薪资/排除项/上限一律以原 goal 为准
 // ---------------------------------------------------------------------------
 
 export const replanSchema = z.object({
@@ -188,14 +219,12 @@ export function buildReplanSystem(goal: JobSearchGoal): string {
     '你是求职搜索策略评估器。根据"当前结果"判断是否需要补充搜索词，只输出 JSON。',
     '',
     '【严格限制】',
-    '- 只能新增搜索 keyword；禁止修改城市、薪资下限、排除项、每日上限',
-    '- 判定规则（必须严格遵守）：当「≥75 分数量」< 「目标高匹配岗位数」时，必须返回 status="continue" 并给出 2~4 个新关键词；',
-    '- 只有当 ≥75 分数量已达标时，才允许返回 status="complete" 且 newKeywords 为空；',
-    '- 新关键词要能带来新岗位（例如岗位名细分方向），不要重复已搜索组合',
-    '- 需要补充时，最多 4 个新关键词，优先高召回（例：AI平台产品经理、智能客服产品经理）',
-    '- 不允许用"放宽条件"（取消排除项/降低薪资）来凑数量',
+    '- 只能新增搜索 keyword；禁止修改城市、薪资下限、hardExclusions、softNegativePreferences、每日上限',
+    '- 判定规则（必须严格遵守）：当「≥75 分数量」<「目标高匹配岗位数」时，必须返回 status="continue" 并给出 2~4 个新关键词',
+    '- 只有当 ≥75 分数量已达标时，才允许返回 status="complete" 且 newKeywords 为空',
+    '- 不允许用"放宽条件"（取消 hardExclusions / 降低薪资）来凑数量',
     '',
-    `当前固定条件（不可修改）：城市=${goal.cities.map((c) => c.name).join('、')}，薪资下限=${goal.salaryMinK ?? '不限'}K，排除项=${goal.excludeTokens.join('、') || '无'}`,
+    `当前固定条件（不可修改）：城市=${goal.cities.map((c) => c.name).join('、')}，薪资下限=${goal.salaryMinK ?? '不限'}K，硬排除=${goal.hardExclusions.join('、') || '无'}`,
     '输出 JSON：{"status":"continue|complete","reason":"给用户看的一句话说明","newKeywords":[]}',
   ].join('\n');
 }
@@ -220,7 +249,7 @@ export function buildReplanUser(input: {
   ].join('\n');
 }
 
-/** 把新关键词按"城市×关键词"展开成查询，跳过已搜索组合，总数受 MAX_REPLAN_QUERIES 限制 */
+/** 新关键词按"当前城市×关键词"展开，跳过已搜索组合，总数受 MAX_REPLAN_QUERIES 限制 */
 export function expandReplanQueries(
   goal: JobSearchGoal,
   searchedQueries: SearchQuery[],
@@ -261,7 +290,6 @@ export async function replanJobSearch(
   input: { goal: JobSearchGoal; searchedQueries: SearchQuery[]; resultSummary: ReplanResultSummary; replanCount: number },
 ): Promise<{ status: 'continue' | 'complete'; reason: string; newQueries: SearchQuery[] }> {
   const target = input.goal.targetQualifiedJobs ?? DEFAULT_TARGET_QUALIFIED_JOBS;
-  // 程序侧护栏：达标 或 已达上限 → 直接结束，不消耗模型调用
   if (input.resultSummary.strongMatchCount >= target) {
     return { status: 'complete', reason: `已有 ${input.resultSummary.strongMatchCount} 个 ≥75 分岗位，达到目标 ${target}。`, newQueries: [] };
   }
@@ -269,12 +297,7 @@ export async function replanJobSearch(
     return { status: 'complete', reason: '已达到 Replan 上限（最多 1 次），本轮结束。', newQueries: [] };
   }
 
-  const raw = (await client.chatJson(
-    replanSchema,
-    buildReplanSystem(input.goal),
-    buildReplanUser(input),
-  )) as ReplanOutput;
-
+  const raw = (await client.chatJson(replanSchema, buildReplanSystem(input.goal), buildReplanUser(input))) as ReplanOutput;
   if (raw.status === 'complete') {
     return { status: 'complete', reason: raw.reason || '模型判断无需补充搜索。', newQueries: [] };
   }

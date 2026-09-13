@@ -108,13 +108,16 @@ Agent Activity 面板展示的是**行为与决策摘要**（例如"当前仅找
 ## 数据结构（V0.4）
 
 ```ts
-JobSearchGoal { rawGoal, cities[{name,code}], targetTitles[], preferredSkills[],
-                excludeTokens[], salaryMinK|null, targetQualifiedJobs, dailyGreetingCap }
+JobSearchGoal { rawGoal, cities[{name,code}](来自 Browser Context), targetTitles[], preferredSkills[],
+                hardExclusions[], softNegativePreferences[], salaryMinK|null,
+                targetQualifiedJobs, dailyGreetingCap }
 SearchQuery   { cityName, cityCode, keyword, source: 'initial' | 'replan' }
 AgentPlan     { goal, queries[], successCriteria{ targetQualifiedJobs, qualifiedScoreThreshold } }
 ```
 
-- 目前支持城市：**杭州 101210100 / 深圳 101280600**；模型识别到其他城市时返回 warning，**不猜 city code**
+- **城市跟随当前 BOSS 页面**（Browser Context）：任何城市都能搜，不再有白名单；模型不输出、也不猜 cityCode
+- Goal 若提到与当前 BOSS 城市不同的城市 → 停止并提示你先切换 BOSS 城市（不自动切城市）
+- 负向约束分两层：`hardExclusions`（用户明确否定 → 硬过滤，优先级高于 AI 分）与 `softNegativePreferences`（弱偏好 → 只影响评分/排序/concerns，绝不删岗位）
 - 默认目标：`targetQualifiedJobs = 10`，`qualifiedScoreThreshold = 75`
 
 ---

@@ -15,10 +15,82 @@
     "Agent",
     "LLM"
    ],
-   "excludeTokens": [
+   "hardExclusions": [
     "外包",
     "售前",
     "纯运营"
+   ],
+   "softNegativePreferences": [],
+   "salaryMinK": 30,
+   "targetQualifiedJobs": 10,
+   "dailyGreetingCap": 5
+  },
+  "queries": [
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "AI产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "Agent产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "LLM产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "大模型产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "AI平台产品经理",
+    "source": "initial"
+   }
+  ],
+  "warnings": [
+   "当前 BOSS 城市为上海，但你的求职目标中提到了杭州、深圳。请先将 BOSS 切换到杭州后重新开始。"
+  ],
+  "mentionedCities": [
+   "杭州",
+   "深圳"
+  ],
+  "successCriteria": {
+   "targetQualifiedJobs": 10,
+   "qualifiedScoreThreshold": 75
+  }
+ },
+ "plan-hard-soft": {
+  "goal": {
+   "rawGoal": "AI产品经理，偏Agent和平台型产品，30K以上，不要外包，也不接受长期出差，最好别太偏售前。",
+   "cities": [
+    {
+     "name": "上海",
+     "code": "101020100"
+    }
+   ],
+   "targetTitles": [
+    "AI产品经理"
+   ],
+   "preferredSkills": [
+    "Agent",
+    "平台型产品"
+   ],
+   "hardExclusions": [
+    "外包",
+    "长期出差"
+   ],
+   "softNegativePreferences": [
+    "售前"
    ],
    "salaryMinK": 30,
    "targetQualifiedJobs": 10,
@@ -46,17 +118,81 @@
    {
     "cityName": "上海",
     "cityCode": "101020100",
-    "keyword": "LLM产品经理",
+    "keyword": "平台型产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "AI平台产品",
     "source": "initial"
    }
   ],
-  "warnings": [
-   "当前 BOSS 城市为上海，但你的求职目标中提到了杭州、深圳。请先将 BOSS 切换到杭州后重新开始。"
+  "warnings": [],
+  "mentionedCities": [],
+  "successCriteria": {
+   "targetQualifiedJobs": 10,
+   "qualifiedScoreThreshold": 75
+  }
+ },
+ "plan-negation-boundary": {
+  "goal": {
+   "rawGoal": "Agent产品经理，不要驻场，不考虑乙方交付，可以接受少量售前沟通，偶尔出差可以。",
+   "cities": [
+    {
+     "name": "上海",
+     "code": "101020100"
+    }
+   ],
+   "targetTitles": [
+    "Agent产品经理"
+   ],
+   "preferredSkills": [
+    "Agent"
+   ],
+   "hardExclusions": [
+    "驻场",
+    "乙方交付"
+   ],
+   "softNegativePreferences": [],
+   "salaryMinK": null,
+   "targetQualifiedJobs": 10,
+   "dailyGreetingCap": 5
+  },
+  "queries": [
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "Agent产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "AI产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "大模型产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "智能体产品经理",
+    "source": "initial"
+   },
+   {
+    "cityName": "上海",
+    "cityCode": "101020100",
+    "keyword": "Agent平台产品经理",
+    "source": "initial"
+   }
   ],
-  "mentionedCities": [
-   "杭州",
-   "深圳"
-  ],
+  "warnings": [],
+  "mentionedCities": [],
   "successCriteria": {
    "targetQualifiedJobs": 10,
    "qualifiedScoreThreshold": 75

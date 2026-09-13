@@ -1,6 +1,6 @@
 {
   "name": "job-application-agent",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "BOSS 岗位助手（Job Agent）：Chrome 扩展 + 本机 AI 打分，自动搜索/筛选/打招呼/日报（个人自用，风险自担）",
   "type": "module",

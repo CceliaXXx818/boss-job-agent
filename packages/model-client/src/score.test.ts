@@ -23,7 +23,8 @@ describe('V0.4 Score：带本轮 Goal context（避免把已接受约束当风�
     const sys = buildScoreSystem(DEFAULT_CANDIDATE, {
       cities: ['杭州', '深圳'],
       salaryMinK: 30,
-      excludeTokens: ['外包', '售前', '纯运营'],
+      hardExclusions: ['外包', '售前', '纯运营'],
+      softNegativePreferences: ['售前属性过强'],
       targetTitles: ['AI产品经理'],
       preferredSkills: ['Agent'],
     });
@@ -32,6 +33,9 @@ describe('V0.4 Score：带本轮 Goal context（避免把已接受约束当风�
     expect(sys).toContain('杭州');
     expect(sys).toContain('30K');
     expect(sys).toContain('不要重复上述已被用户接受的约束');
+    // soft 只能影响评分/concerns，禁止据此直接排除
+    expect(sys).toContain('弱负向偏好');
+    expect(sys).toContain('禁止因此直接判定不推荐');
   });
 
   it('不传 goalContext 时保持原有提示词（向后兼容）', () => {

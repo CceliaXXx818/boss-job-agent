@@ -66,8 +66,11 @@ export const MAX_REPLAN = 1;
 export const MAX_REPLAN_QUERIES = 4;
 export const DETAIL_FETCH_LIMIT = 15;
 
-/** 兜底排除词（与 extension/auto.js 既有规则保持一致） */
-export const DEFAULT_EXCLUDE_TOKENS = Object.freeze(['数据标注', 'AI运营', '训练运营', '销售', '驻外', '外派', '纯运营', '标注']);
+/** 系统级硬排除（确定性，非用户可放宽） */
+export const SYSTEM_HARD_EXCLUSIONS = Object.freeze(['数据标注', 'AI运营', '训练运营', '销售', '驻外', '外派', '纯运营', '标注']);
+
+/** @deprecated 兼容旧名 */
+export const DEFAULT_EXCLUDE_TOKENS = SYSTEM_HARD_EXCLUSIONS;
 
 /** 规则排序加分词 */
 export const BOOST_TOKENS = Object.freeze([
@@ -88,9 +91,17 @@ export function uniq(arr) {
   return out;
 }
 
-/** 排除词 = 候选人画像 excludeTokens + 用户 Goal excludeTokens（去重） */
+/**
+ * 最终硬排除 = 系统硬排除 + 候选人画像硬排除 + 本轮 Goal hardExclusions（去重）。
+ * V0.4.1：softNegativePreferences 绝不进入这里（只能影响评分/排序/concerns）。
+ */
+export function mergeHardExclusions(candidateHard, goalHard) {
+  return uniq([...(candidateHard ?? []), ...(goalHard ?? []), ...SYSTEM_HARD_EXCLUSIONS]).map((t) => t.toLowerCase());
+}
+
+/** @deprecated 兼容 V0.4.0 调用名 */
 export function mergeExcludeTokens(candidateTokens, goalTokens) {
-  return uniq([...(candidateTokens ?? []), ...(goalTokens ?? []), ...DEFAULT_EXCLUDE_TOKENS]).map((t) => t.toLowerCase());
+  return mergeHardExclusions(candidateTokens, goalTokens);
 }
 
 export function hardFilter(job, excludeTokens) {

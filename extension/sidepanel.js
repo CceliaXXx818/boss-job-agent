@@ -4,7 +4,7 @@ import {
   resolveBossContext,
   detectCityConflict,
   canGreet,
-  mergeExcludeTokens,
+  mergeHardExclusions,
   hardFilter,
   selectDetailTargets,
   rankJobs,
@@ -94,12 +94,18 @@ function setStats() {
 }
 
 function renderGoalSummary(goal) {
-  $('goalSummary').innerHTML = [
-    `<li><span>城市</span><b>${escapeHtml(goal.cities.map((c) => c.name).join('、') || '—')}</b></li>`,
-    `<li><span>方向</span><b>${escapeHtml(goal.targetTitles.join('、') || '—')}</b></li>`,
-    `<li><span>薪资要求</span><b>${goal.salaryMinK ? `${goal.salaryMinK}K 以上` : '不限'}</b></li>`,
-    `<li><span>硬排除项</span><b>${escapeHtml(goal.excludeTokens.join('、') || '—')}</b></li>`,
-  ].join('');
+  const rows = [];
+  rows.push(`<li><span>城市（当前 BOSS）</span><b>${escapeHtml(goal.cities.map((c) => c.name).join('、') || '—')}</b></li>`);
+  const direction = [...goal.targetTitles, ...goal.preferredSkills].filter(Boolean);
+  if (direction.length) rows.push(`<li><span>方向</span><b>${escapeHtml(direction.join(' / '))}</b></li>`);
+  rows.push(`<li><span>薪资要求</span><b>${goal.salaryMinK ? `${goal.salaryMinK}K+` : '不限'}</b></li>`);
+  if (goal.hardExclusions?.length) {
+    rows.push(`<li><span>明确排除</span><b>${goal.hardExclusions.map((t) => `× ${escapeHtml(t)}`).join('　')}</b></li>`);
+  }
+  if (goal.softNegativePreferences?.length) {
+    rows.push(`<li><span>偏弱偏好</span><b>${goal.softNegativePreferences.map((t) => `△ ${escapeHtml(t)}`).join('　')}</b></li>`);
+  }
+  $('goalSummary').innerHTML = rows.join('');
 }
 
 function renderPlanList(queries) {
@@ -237,10 +243,10 @@ export async function runAgent(rawGoal) {
     let candidateExclude = [];
     try {
       const cfg = await fetch(`${AI_BASE}/config`, { signal: AbortSignal.timeout(AI_TIMEOUT) }).then((r) => r.json());
-      candidateExclude = cfg?.candidate?.excludeTokens ?? [];
+      candidateExclude = cfg?.candidate?.hardExclusions ?? cfg?.candidate?.excludeTokens ?? [];
     } catch { /* 服务不可用时仅用 Goal 排除项 */ }
-    const excludeTokens = mergeExcludeTokens(candidateExclude, goal.excludeTokens);
-    session.excludeTokens = excludeTokens;
+    const hardExclusions = mergeHardExclusions(candidateExclude, goal.hardExclusions);
+    session.hardExclusions = hardExclusions;
 
     // 3) 第一轮：Search → Filter → Detail → Score
     const tab = await findBossTab();
@@ -380,7 +386,8 @@ async function runRound(tab, queries, planBaseIndex) {
         goalContext: {
           cities: session.goal.cities.map((c) => c.name),
           salaryMinK: session.goal.salaryMinK,
-          excludeTokens: session.goal.excludeTokens,
+          hardExclusions: session.goal.hardExclusions,
+          softNegativePreferences: session.goal.softNegativePreferences,
           targetTitles: session.goal.targetTitles,
           preferredSkills: session.goal.preferredSkills,
         },

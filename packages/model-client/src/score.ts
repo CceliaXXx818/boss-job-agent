@@ -22,7 +22,11 @@ export interface CandidateProfileText {
   evidenceProjects: string[];
   preferredSkills: string[];
   targetTitles: string[];
-  excludeTokens: string[];
+  /** 画像里的硬排除（V0.4.1 起）；兼容旧字段 excludeTokens */
+  hardExclusions?: string[];
+  softNegativePreferences?: string[];
+  /** @deprecated 兼容 V0.4.0 配置 */
+  excludeTokens?: string[];
 }
 
 export const DEFAULT_CANDIDATE: CandidateProfileText = {
@@ -31,7 +35,8 @@ export const DEFAULT_CANDIDATE: CandidateProfileText = {
   evidenceProjects: ['AI智能语音外呼', 'LLM与RAG智能客服', '智能质检平台', '智能对话数字人'],
   preferredSkills: ['LLM', 'Agent', 'RAG', 'Prompt Engineering', 'Conversational AI', '智能客服', '智能外呼', '智能质检', 'Workflow', 'Function Calling'],
   targetTitles: ['AI产品经理', '大模型产品经理', 'Agent产品经理', '对话AI产品经理', '智能客服产品经理', 'AI解决方案产品经理', '高级产品经理-AI方向'],
-  excludeTokens: ['数据标注', 'AI运营', '训练运营', '销售', '驻外', '外派', '纯运营', '标注'],
+  hardExclusions: ['数据标注', 'AI运营', '训练运营', '销售', '驻外', '外派', '纯运营', '标注'],
+  softNegativePreferences: [],
 };
 
 export const scoreSchema = z.object({
@@ -64,14 +69,18 @@ export function profilePrompt(c: CandidateProfileText): string {
     `证据项目：${c.evidenceProjects.join('、')}`,
     `偏好技能：${c.preferredSkills.join('、')}`,
     `目标岗位关键词：${c.targetTitles.join('、')}`,
-    `明确排除：${c.excludeTokens.join('、')}`,
+    `明确排除：${(c.hardExclusions ?? c.excludeTokens ?? []).join('、')}`,
+    ...(c.softNegativePreferences?.length ? [`弱负向偏好：${c.softNegativePreferences.join('、')}`] : []),
   ].join('\n');
 }
 
 export interface ScoreGoalContext {
   cities?: string[];
   salaryMinK?: number | null;
-  excludeTokens?: string[];
+  /** 硬排除：前面已被规则拦掉，这里只用于说明"不要重复提示" */
+  hardExclusions?: string[];
+  /** 弱负向偏好：只影响评分/排序/concerns，禁止据此直接排除岗位 */
+  softNegativePreferences?: string[];
   targetTitles?: string[];
   preferredSkills?: string[];
 }
@@ -83,7 +92,12 @@ export function buildScoreSystem(c: CandidateProfileText, goalContext?: ScoreGoa
     ctxLines.push('【本轮搜索目标（用户已经接受，不要把这些当作风险或扣分理由）】');
     if (goalContext.cities?.length) ctxLines.push(`- 目标城市：${goalContext.cities.join('、')}（用户已确认接受）`);
     if (goalContext.salaryMinK) ctxLines.push(`- 薪资下限：${goalContext.salaryMinK}K（低于此值的岗位已被规则拦掉，无需再提示薪资风险）`);
-    if (goalContext.excludeTokens?.length) ctxLines.push(`- 已排除：${goalContext.excludeTokens.join('、')}（命中项不会进入评分）`);
+    if (goalContext.hardExclusions?.length) ctxLines.push(`- 已硬排除：${goalContext.hardExclusions.join('、')}（命中项已被规则拦掉，无需再提示）`);
+    if (goalContext.softNegativePreferences?.length) {
+      ctxLines.push(
+        `- 弱负向偏好（仅用于调整评分/优先级/concerns，**禁止因此直接判定不推荐**）：${goalContext.softNegativePreferences.join('、')}`,
+      );
+    }
     if (goalContext.targetTitles?.length) ctxLines.push(`- 目标岗位：${goalContext.targetTitles.join('、')}`);
     if (goalContext.preferredSkills?.length) ctxLines.push(`- 偏好技能：${goalContext.preferredSkills.join('、')}`);
     ctxLines.push('- 若仍需提示风险，只写"相对 JD 的真实差距"，不要重复上述已被用户接受的约束。');

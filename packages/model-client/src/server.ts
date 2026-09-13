@@ -40,7 +40,8 @@ function parseSalaryMinK(ascii: string): number | null {
 
 function gateJob(j: JobScoreInput, candidate: CandidateProfileText, salaryMinK?: number): string | null {
   const blob = `${j.title} ${j.company ?? ''} ${j.expEdu.join(' ')} ${j.companyMeta.join(' ')}`.toLowerCase();
-  for (const t of candidate.excludeTokens) if (blob.includes(t)) return `规则排除：含「${t}」`;
+  const hard = candidate.hardExclusions ?? candidate.excludeTokens ?? [];
+  for (const t of hard) if (blob.includes(t)) return `规则排除：含「${t}」`;
   if (salaryMinK != null) {
     const min = parseSalaryMinK(j.salaryAscii ?? '');
     if (min != null && min < salaryMinK) return `薪资下限 ${min}K < ${salaryMinK}K`;
@@ -65,7 +66,10 @@ const server = createServer(async (req, res) => {
       JSON.stringify({
         ok: true,
         candidate: {
-          excludeTokens: FILE_CANDIDATE.excludeTokens,
+          // 兼容旧字段名：candidate.excludeTokens 视为画像硬排除
+          hardExclusions: FILE_CANDIDATE.hardExclusions ?? FILE_CANDIDATE.excludeTokens ?? [],
+          softNegativePreferences: FILE_CANDIDATE.softNegativePreferences ?? [],
+          excludeTokens: FILE_CANDIDATE.excludeTokens ?? [],
           preferredSkills: FILE_CANDIDATE.preferredSkills,
           targetTitles: FILE_CANDIDATE.targetTitles,
           experienceYears: FILE_CANDIDATE.experienceYears,
@@ -134,7 +138,8 @@ const server = createServer(async (req, res) => {
       goalContext?: {
         cities?: string[];
         salaryMinK?: number | null;
-        excludeTokens?: string[];
+        hardExclusions?: string[];
+        softNegativePreferences?: string[];
         targetTitles?: string[];
         preferredSkills?: string[];
       };
