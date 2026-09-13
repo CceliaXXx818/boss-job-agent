@@ -126,3 +126,12 @@ input[type="number"] { width: 70px; }
 .policy-line { padding: 2px 0; }
 .policy-allow { color: var(--ok); }
 .policy-deny { color: var(--bad); }
+
+/* ===== V0.5 Phase 2：Action Queue / 状态面板 ===== */
+.staged-list { margin: 4px 0; padding-left: 16px; }
+.staged-list li { margin: 2px 0; }
+.state-line { padding: 2px 0; }
+.state-chip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--chip); color: var(--muted); margin-right: 4px; }
+.state-chip.ok { color: #0f6b2f; background: #e9f8ee; }
+.state-chip.bad { color: var(--bad); background: #fdf3f3; }
+.state-chip.warn { color: var(--warn); background: #fff7ed; }

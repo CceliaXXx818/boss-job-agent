@@ -25,6 +25,35 @@ import {
 } from './settings.js';
 import { buildGreetingMessage } from './greeting-builder.js';
 import { evaluateAutopilotGreeting } from './autopilot-policy.js';
+// ---- V0.5 Phase 2：持久化层（Event Store / Job State / Action Queue）----
+import { aggregateEvents, getEventMeta, localDateKey, pruneEvents } from './event-store.js';
+import { countByState, getAllJobStates } from './job-state.js';
+import {
+  ACTION_STATUS,
+  approveActions,
+  createGreetingActions,
+  getActions,
+  markExecuting,
+  markFailed,
+  markSkipped,
+  markSuccess,
+  pruneActions,
+  recoverInterruptedActions,
+  summarizeActions,
+} from './action-queue.js';
+import {
+  getDailyGreetingCount,
+  getGreetedHistory,
+  hasGreeted,
+  recordConsent,
+  recordGreetingFailure,
+  recordGreetingSuccess,
+  recordJobsDiscovered,
+  recordJobsScored,
+  recordJobsShortlisted,
+  recordModeChange,
+  recordSettingsUpdated,
+} from './agent-records.js';
 
 const AI_BASE = 'http://127.0.0.1:8799';
 const AI_TIMEOUT = 3000;
@@ -53,6 +82,7 @@ export const session = {
   replanCount: 0,
   stopped: false,
   selectedIds: new Set(),
+  stagedActions: [],
 };
 
 // ---------------- UI 工具 ----------------
@@ -277,10 +307,13 @@ export async function runAgent(rawGoal) {
     renderPlanList(queries);
     if (!queries.length) throw new Error('计划中没有可用的搜索任务（城市可能不受支持）');
 
-    // 每日上限（以 Goal 为准，不超过 10）
-    const cap = Math.min(Number(goal.dailyGreetingCap) || 5, 10);
+    // 每日上限：Phase 2 起以用户设置为唯一事实来源（计划里的建议值只做提示）
+    const cap = Number(session.settings?.dailyGreetingCap) || 5;
+    const planCap = Number(goal.dailyGreetingCap);
+    if (Number.isFinite(planCap) && planCap !== cap) {
+      addActivity('Settings', `计划建议每日联系 ${planCap} 个，当前设置为 ${cap} 个（以设置为准，可在 Autopilot 设置里调整）`);
+    }
     $('capInput').value = cap;
-    await chrome.storage.local.set({ dailyCap: cap });
     await refreshQuota();
 
     // 2) 排除词 = 画像 + Goal（硬约束最高优先级）
@@ -333,6 +366,9 @@ export async function runAgent(rawGoal) {
 
     // 5) Shortlist
     const strong = strongMatches();
+    await safeRecord('Shortlisted', () =>
+      recordJobsShortlisted({ jobs: strong, mode: session.settings?.mode ?? 'review' }),
+    );
     renderShortlist(strong);
     showState('complete');
     $('stateText').textContent = 'complete';
@@ -377,6 +413,10 @@ async function runRound(tab, queries, planBaseIndex) {
   session.qualifiedJobs = qualified;
   addActivity('Filter', `本轮移除 ${removedThisRound} 个（命中排除词），累计保留 ${qualified.length} 个`);
   setStats();
+  // Phase 2：把候选岗位写入 Event Store（幂等，跨轮不会重复记录）+ Job State = DISCOVERED
+  await safeRecord('Discovered', () =>
+    recordJobsDiscovered({ jobs: qualified, round: session.replanCount + 1, mode: session.settings?.mode ?? 'review' }),
+  );
 
   // Detail（只抓 Top N 且未抓过的）
   $('stateText').textContent = 'fetching_details';
@@ -447,6 +487,9 @@ async function runRound(tab, queries, planBaseIndex) {
       else session.scoredJobs.push(merged);
     }
     addActivity('Score', `本轮评分 ${newlyFetched.length} 个，≥75 分共 ${strongMatches().length} 个`);
+    await safeRecord('Scored', () =>
+      recordJobsScored({ jobs: newlyFetched, mode: session.settings?.mode ?? 'review' }),
+    );
   }
   setStats();
 }
@@ -538,72 +581,256 @@ function renderAgentSummary(shortlist) {
   $('agentSummaryBody').innerHTML = lines.map((l) => `<div>${l}</div>`).join('');
 }
 
-// ---------------- Phase 5：用户批准后的打招呼（复用 content.js greetFull） ----------------
-async function greetSelected() {
-  const cap = Number($('capInput').value) || 5;
-  const key = `greet-${todayKey()}`;
-  const st = await chrome.storage.local.get(key);
-  let done = Number(st[key] ?? 0);
-  const history = await getHistory();
-  const selected = (session.shortlist ?? []).filter((j) => session.selectedIds.has(j.jobId));
+// ---------------- Phase 2：Review 打招呼 = Action Queue + Event Store ----------------
+// 流程：勾选 → 创建 GREETING Actions(pending) → 二次确认(approved) → 执行 content.greetFull
+//       → 成功：action success + GREETING_SENT + Job State GREETED
+//       → 失败：action failed + GREETING_FAILED（绝不标成 GREETED）
+// content.js 的 DOM 行为保持不变。
+
+/** 记录类调用一律不阻断主流程：存储出问题只提示，不让整轮搜索失败 */
+export async function safeRecord(label, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    addActivity(label, `记录失败（不影响本次运行）：${e?.message ?? e}`);
+    return null;
+  }
+}
+
+function selectedJobs() {
+  return (session.shortlist ?? []).filter((j) => session.selectedIds.has(j.jobId));
+}
+
+/** 第一步：把选中岗位转成 pending Action（此时固化话术），并展示二次确认 */
+async function stageGreetingActions() {
+  const box = $('completeError');
+  box.hidden = true;
+  const selected = selectedJobs();
   if (!selected.length) {
-    $('completeError').hidden = false;
-    $('completeError').textContent = '没有选中任何岗位。';
+    box.className = 'box box-error';
+    box.textContent = '请先勾选要联系的岗位。';
+    box.hidden = false;
     return;
   }
+
+  // 话术固化：Review 输入框是编辑面，先写进 settings 再固化进 Action
+  const typed = $('greetText').value;
+  if (typed.trim() !== session.settings?.greetingStrategy?.template) {
+    session.settings = await saveSettings({
+      ...session.settings,
+      greetingStrategy: { ...session.settings.greetingStrategy, mode: 'template', template: typed },
+    });
+    renderTemplateForm();
+  }
+
+  let built;
+  try {
+    built = buildGreetingMessage({
+      job: { jobId: 'batch', title: `${selected.length} 个岗位` },
+      greetingStrategy: session.settings.greetingStrategy,
+    });
+  } catch (e) {
+    box.className = 'box box-error';
+    box.textContent = `话术不可用：${e?.message ?? e}`;
+    box.hidden = false;
+    return;
+  }
+
+  const res = await createGreetingActions({
+    jobs: selected.map((j) => ({
+      jobId: j.jobId,
+      title: j.title,
+      company: j.company,
+      href: j.href,
+      score: j.__ai?.score ?? null,
+    })),
+    message: built.message,
+    strategy: built.strategy,
+    mode: session.settings?.mode ?? 'review',
+  });
+  session.stagedActions = res.created;
+
+  const listEl = $('stagedActions');
+  const createdHtml = res.created.length
+    ? `<div>已创建 <b>${res.created.length}</b> 个待确认 Action（idempotencyKey = greeting:jobId）：</div>
+       <ul class="staged-list">${res.created
+         .map((a) => `<li>${escapeHtml(a.jobTitle ?? a.jobId)}（${a.payload.score ?? '—'} 分）</li>`)
+         .join('')}</ul>`
+    : '<div>没有可执行的 Action。</div>';
+  const skippedHtml = res.skipped.length
+    ? `<div class="policy-deny">跳过 ${res.skipped.length} 个：${res.skipped
+        .map((s) => `${escapeHtml(s.jobId ?? '—')}（${escapeHtml(s.reason)}）`)
+        .join('；')}</div>`
+    : '';
+  listEl.innerHTML = createdHtml + skippedHtml;
+
+  $('approveCount').textContent = String(res.created.length);
+  $('approveBox').hidden = false;
+  await refreshQuota();
+  await renderAgentStatePanel();
+  addActivity(
+    'ActionQueue',
+    `已创建 ${res.created.length} 个 GREETING Action（pending），跳过 ${res.skipped.length} 个，等待你确认`,
+  );
+  if (!res.created.length) {
+    box.className = 'box box-error';
+    box.textContent = '选中的岗位都已联系过或已有待执行的 Action，没有需要执行的。';
+    box.hidden = false;
+  }
+}
+
+/** 第二步：用户确认 → approved → 逐条执行（失败不误标 GREETED） */
+async function executeStagedActions() {
+  const box = $('completeError');
+  const actions = session.stagedActions ?? [];
+  if (!actions.length) {
+    box.className = 'box box-error';
+    box.textContent = '没有待确认的 Action（请重新点击"联系选中岗位"）。';
+    box.hidden = false;
+    return;
+  }
+
+  const cap = Number(session.settings?.dailyGreetingCap) || 5;
+  let done = (await getDailyGreetingCount()).effective;
   const tab = await findBossTab();
-  addActivity('Greeting', `用户已批准：准备联系 ${selected.length} 个岗位（今日 ${done}/${cap}）`);
+
+  const approval = await approveActions(actions.map((a) => a.actionId));
+  const approvedIds = new Set(approval.approved.map((a) => a.actionId));
+  for (const s of approval.skipped) addActivity('ActionQueue', `无法确认 ${s.actionId}：${s.reason}`);
+  addActivity('Greeting', `用户已批准 ${approval.approved.length} 个 Action（今日 ${done}/${cap}）`);
+
   let sent = 0;
   let skipped = 0;
-  for (const job of selected) {
-    // 三重闸门：用户批准 + 每日上限 + 历史去重（规则优先于任何模型判断）
-    const gate = canGreet({ approved: true, dailyDone: done, dailyCap: cap, jobId: job.jobId, history });
-    if (!gate.ok) {
+  const history = await getGreetedHistory();
+
+  for (const action of actions) {
+    if (!approvedIds.has(action.actionId)) {
       skipped++;
-      addActivity('Greeting', `跳过 ${job.title}：${gate.reason}`);
       continue;
     }
-    // 话术统一由 greeting-builder 生成（Review 同样走策略，保证行为一致）
-    let text;
-    try {
-      text = buildGreetingMessage({ job, greetingStrategy: session.settings?.greetingStrategy }).message;
-    } catch (e) {
-      $('completeError').hidden = false;
-      $('completeError').className = 'box box-error';
-      $('completeError').textContent = `话术不可用：${e?.message ?? e}`;
-      return;
+
+    // 执行前最终闸门：Event Store 幂等 + 每日上限 + 历史去重（防止重复点击/刷新/重开）
+    if (await hasGreeted(action.jobId)) {
+      await markSkipped(action.actionId, { reason: '该岗位已有 GREETING_SENT 记录' });
+      skipped++;
+      addActivity('Greeting', `跳过 ${action.jobTitle ?? action.jobId}：已有 GREETING_SENT 记录`);
+      continue;
     }
+    const gate = canGreet({ approved: true, dailyDone: done, dailyCap: cap, jobId: action.jobId, history });
+    if (!gate.ok) {
+      await markSkipped(action.actionId, { reason: gate.reason });
+      skipped++;
+      addActivity('Greeting', `跳过 ${action.jobTitle ?? action.jobId}：${gate.reason}`);
+      continue;
+    }
+
+    await markExecuting(action.actionId);
     try {
-      await chrome.tabs.update(tab.id, { url: `https://www.zhipin.com${job.href}` });
+      await chrome.tabs.update(tab.id, { url: `https://www.zhipin.com${action.payload.href}` });
       await sleep(4200);
-      const r = await sendTab(tab.id, { type: 'greetFull', labels: GREET_LABELS, text });
+      const r = await sendTab(tab.id, { type: 'greetFull', labels: GREET_LABELS, text: action.payload.message });
       const ok = r?.ok === true && (r.stage === 'sent' || r.stage === 'sent_by_enter');
-      if (!ok) {
-        addActivity('Greeting', `${job.title} 未完成发送：${r?.detail ?? r?.stage ?? '未知'}`);
-        throw new Error('BOSS 页面需要人工处理（打招呼未确认发送）');
-      }
+      if (!ok) throw new Error(r?.detail ?? r?.stage ?? '打招呼未确认发送');
+
+      // 统一 helper：append GREETING_SENT + Job State → GREETED + legacy 兼容写入
+      const rec = await recordGreetingSuccess({
+        job: { jobId: action.jobId, title: action.jobTitle, company: action.company },
+        message: action.payload.message,
+        messageStrategy: action.payload.messageStrategy,
+        templateId: action.payload.templateId,
+        score: action.payload.score,
+        actionId: action.actionId,
+        mode: action.mode,
+      });
+      await markSuccess(action.actionId, { eventId: rec.eventId });
       sent++;
       done++;
-      await chrome.storage.local.set({ [key]: done });
-      await addHistory(job.jobId);
-      history.add(job.jobId);
-      job.__greeted = true;
-      addActivity('Greeting', `✓ ${job.title}（今日 ${done}/${cap}）`);
+      history.add(action.jobId);
+      session.selectedIds.delete(action.jobId);
+      const job = (session.shortlist ?? []).find((j) => j.jobId === action.jobId);
+      if (job) job.__greeted = true;
+      addActivity('Greeting', `✓ ${action.jobTitle ?? action.jobId}（今日 ${done}/${cap}）`);
       await refreshQuota();
     } catch (e) {
-      // 注意：打招呼失败不改变整体状态——保持在 COMPLETE，只在卡片区提示，
-      // 避免把"已经跑完的搜索结果"整体丢掉。
-      $('completeError').hidden = false;
-      $('completeError').className = 'box box-error';
-      $('completeError').textContent = `该岗位未完成发送：${friendlyError(e?.message ?? e)}。请人工在 BOSS 页面处理后再继续。`;
-      addActivity('Greeting', `停止在本岗位（用户可人工处理后重试）`);
+      const friendly = friendlyError(e?.message ?? e);
+      await safeRecord('GreetingFailed', () =>
+        recordGreetingFailure({
+          job: { jobId: action.jobId, title: action.jobTitle, company: action.company },
+          error: friendly,
+          actionId: action.actionId,
+          mode: action.mode,
+        }),
+      );
+      await markFailed(action.actionId, { error: friendly });
+      box.hidden = false;
+      box.className = 'box box-error';
+      box.textContent = `该岗位未完成发送：${friendly}。Action 已标记为 failed，岗位状态不会变成 GREETED，请人工在 BOSS 页面处理后再重试。`;
+      addActivity('Greeting', `失败：${action.jobTitle ?? action.jobId}（Action failed，未记 GREETED）`);
+      session.stagedActions = [];
+      await renderAgentStatePanel();
       return;
     }
   }
-  $('completeError').hidden = false;
-  $('completeError').className = 'box';
-  $('completeError').textContent = `完成：成功 ${sent} 个，跳过 ${skipped} 个（今日 ${done}/${cap}）。`;
+
+  box.hidden = false;
+  box.className = 'box';
+  box.textContent = `完成：成功 ${sent} 个，跳过 ${skipped} 个（今日 ${done}/${cap}）。`;
   addActivity('Greeting', `本轮结束：成功 ${sent}，跳过 ${skipped}`);
+  // 已处理的 Action 不再留在暂存区：需要重试时必须重新走"联系选中岗位"（重新做幂等检查）
+  session.stagedActions = [];
+  await renderAgentStatePanel();
+}
+
+// ---------------- Phase 2：持久化状态面板（Side Panel 只是展示，storage 才是事实来源） ----------------
+export async function renderAgentStatePanel() {
+  const el = $('agentStateBody');
+  if (!el) return;
+  try {
+    const today = localDateKey();
+    const [queue, states, meta, recent, todayAgg] = await Promise.all([
+      summarizeActions(),
+      countByState(),
+      getEventMeta(),
+      getActions({}),
+      aggregateEvents({ startDate: today, endDate: today }),
+    ]);
+    const stateLine = Object.entries(states)
+      .map(([k, v]) => `<span class="state-chip">${escapeHtml(k)} ${v}</span>`)
+      .join('') || '<span class="muted">（暂无岗位状态）</span>';
+    const tail = recent.slice(-8).reverse();
+    const actionLines = tail.length
+      ? tail
+          .map((a) => {
+            const cls =
+              a.status === ACTION_STATUS.SUCCESS
+                ? 'ok'
+                : a.status === ACTION_STATUS.FAILED || a.status === ACTION_STATUS.REQUIRES_MANUAL
+                  ? 'bad'
+                  : a.status === ACTION_STATUS.SKIPPED
+                    ? 'warn'
+                    : '';
+            const extra = a.lastError ? ` — ${escapeHtml(a.lastError)}` : a.manualReason ? ` — ${escapeHtml(a.manualReason)}` : '';
+            return `<div class="state-line"><span class="state-chip ${cls}">${a.status}</span>${escapeHtml(
+              a.jobTitle ?? a.jobId,
+            )}${extra}</div>`;
+          })
+          .join('')
+      : '<div class="muted">（暂无 Action）</div>';
+    const dates = Object.keys(meta.dates ?? {}).sort();
+    const todayLine =
+      `今日事件 ${todayAgg.total} 条：发现 ${todayAgg.discovered} · 评分 ${todayAgg.scored} · 入选 ${todayAgg.shortlisted}` +
+      ` · 打招呼成功 ${todayAgg.greetingSent} · 失败 ${todayAgg.greetingFailed}`;
+    el.innerHTML =
+      `<div>${todayLine}</div>` +
+      `<div><b>Action Queue</b>：待确认 ${queue.pending} · 已确认 ${queue.approved} · 执行中 ${queue.executing} · 成功 ${queue.success} · 失败 ${queue.failed} · 跳过 ${queue.skipped} · 需人工 ${queue.requiresManual}</div>` +
+      `<div><b>岗位状态</b>：${stateLine}</div>` +
+      `<div><b>事件</b>：共 ${meta.totalEvents ?? 0} 条，覆盖 ${dates.length} 天（保留 ${meta.retentionDays ?? 30} 天）；最近清理 ${
+        meta.lastPrunedAt ? escapeHtml(String(meta.lastPrunedAt).slice(0, 19).replace('T', ' ')) : '从未'
+      }</div>` +
+      `<div><b>最近 Action</b>：</div>${actionLines}`;
+  } catch (e) {
+    el.textContent = `读取失败：${e?.message ?? e}`;
+  }
 }
 
 // ---------------- 连接状态 / 配额 ----------------
@@ -630,28 +857,23 @@ async function checkAi() {
 }
 
 export async function refreshQuota() {
-  const cap = Number($('capInput').value) || 5;
-  await chrome.storage.local.set({ dailyCap: cap });
-  const key = `greet-${todayKey()}`;
-  const st = await chrome.storage.local.get(key);
-  const done = Number(st[key] ?? 0);
+  const cap = Number(session.settings?.dailyGreetingCap) || Number($('capInput').value) || 5;
+  // 今日已联系数 = max(Event Store 里的 GREETING_SENT, V0.4 legacy 计数)，宁多算不少算
+  let done = 0;
+  try {
+    done = (await getDailyGreetingCount()).effective;
+  } catch {
+    const key = `greet-${todayKey()}`;
+    const st = await chrome.storage.local.get(key);
+    done = Number(st[key] ?? 0) || 0;
+  }
   $('quotaText').textContent = `${done} / ${cap}`;
   $('approveQuota').textContent = `${done} / ${cap}`;
   $('approveCap').textContent = String(cap);
 }
 
-const HIST_KEY = 'greetedHistory';
-async function getHistory() {
-  const st = await chrome.storage.local.get(HIST_KEY);
-  return new Set(Array.isArray(st[HIST_KEY]) ? st[HIST_KEY] : []);
-}
-async function addHistory(jobId) {
-  const h = await getHistory();
-  if (!h.has(jobId)) {
-    h.add(jobId);
-    await chrome.storage.local.set({ [HIST_KEY]: [...h] });
-  }
-}
+// legacy 读取入口（V0.4 的 greetedHistory 继续兼容读取）
+const getHistory = () => getGreetedHistory();
 
 const GREET_LABELS = ['打招呼', '立即沟通', '和TA聊聊', '开聊', '开始沟通', '打个招呼', '马上沟通', '立即开聊', '聊一聊', '发消息'];
 
@@ -787,10 +1009,14 @@ async function setMode(mode) {
   if (!MODES.includes(mode)) return;
   if (mode === 'review') {
     const hadConsent = session.settings?.consent?.autopilot === true;
+    const previous = session.settings?.mode ?? 'review';
     const next = hadConsent ? revokeAutopilotConsent(session.settings) : { ...session.settings, mode: 'review' };
     await persistSettings(next);
+    await safeRecord('Mode', () => recordModeChange({ mode: 'review', previous }));
+    if (hadConsent) await safeRecord('Consent', () => recordConsent({ granted: false, kind: 'autopilot' }));
     addActivity('Mode', hadConsent ? '已切回 Review Mode，并撤销 Autopilot 授权' : '已切换到 Review Mode（联系动作需手动确认）');
     renderModeUi();
+    await renderAgentStatePanel();
     return;
   }
   // autopilot：首次开启必须先授权（后续再次切换不再重复弹窗）
@@ -798,9 +1024,12 @@ async function setMode(mode) {
     openConsent();
     return;
   }
+  const previous = session.settings?.mode ?? 'review';
   await persistSettings({ ...session.settings, mode: 'autopilot' });
+  await safeRecord('Mode', () => recordModeChange({ mode: 'autopilot', previous }));
   addActivity('Mode', '已切换到 Autopilot（本阶段仅规则预演，不自动执行）');
   renderModeUi();
+  await renderAgentStatePanel();
 }
 
 async function runPolicyPreview() {
@@ -812,8 +1041,7 @@ async function runPolicyPreview() {
   }
   const st = session.settings;
   const cap = st.dailyGreetingCap;
-  const key = `greet-${todayKey()}`;
-  const done = Number((await chrome.storage.local.get(key))[key] ?? 0);
+  const done = await safeRecord('Quota', () => getDailyGreetingCount()).then((r) => r?.effective ?? 0);
   const history = await getHistory();
   const nowHHMM = hhmm();
   const withinHours = isWithinWorkingHours(nowHHMM, st.workingHours.start, st.workingHours.end);
@@ -882,13 +1110,30 @@ function bindSettingsUi() {
     renderTemplateForm();
     closeConsent();
     renderModeUi();
+    await safeRecord('Consent', () => recordConsent({ granted: true, kind: 'autopilot', template: preview }));
+    await renderAgentStatePanel();
     addActivity('Consent', `已授权 Autopilot（话术 ${preview.length} 字，可随时切回 Review 撤销运行）`);
   };
   $('saveSettings').onclick = async () => {
+    const before = {
+      minimumAutoGreetingScore: session.settings?.minimumAutoGreetingScore,
+      dailyGreetingCap: session.settings?.dailyGreetingCap,
+      workingHours: session.settings?.workingHours,
+    };
     const next = readSettingsForm();
     await persistSettings(next, $('settingsMsg'), '已保存');
     renderModeUi();
+    await safeRecord('Settings', () =>
+      recordSettingsUpdated({
+        changed: {
+          minimumAutoGreetingScore: [before.minimumAutoGreetingScore, next.minimumAutoGreetingScore],
+          dailyGreetingCap: [before.dailyGreetingCap, next.dailyGreetingCap],
+          workingHours: [before.workingHours, next.workingHours],
+        },
+      }),
+    );
     addActivity('Settings', `Autopilot 设置已更新（阈值 ${next.minimumAutoGreetingScore}，每日上限 ${next.dailyGreetingCap}）`);
+    await renderAgentStatePanel();
   };
   $('greetTemplate').oninput = updateTemplateCounter;
   $('saveTemplate').onclick = async () => {
@@ -930,6 +1175,27 @@ function bindSettingsUi() {
       $('policyPreviewResult').textContent = `试算失败：${e?.message ?? e}`;
     });
   };
+  $('refreshState').onclick = () => {
+    renderAgentStatePanel().catch(() => {});
+  };
+  $('pruneEventsBtn').onclick = async () => {
+    try {
+      const r = await pruneEvents({ retentionDays: 30 });
+      $('stateMsg').textContent = `已清理 ${r.removedDates.length} 天（${r.removedEvents} 条事件），保留副作用幂等键 ${r.keptCriticalKeys} 个`;
+    } catch (e) {
+      $('stateMsg').textContent = `清理失败：${e?.message ?? e}`;
+    }
+    await renderAgentStatePanel();
+  };
+  $('pruneActionsBtn').onclick = async () => {
+    try {
+      const r = await pruneActions({ retentionDays: 30 });
+      $('stateMsg').textContent = `已清理 ${r.removed} 个旧 Action，保留 ${r.kept} 个`;
+    } catch (e) {
+      $('stateMsg').textContent = `清理失败：${e?.message ?? e}`;
+    }
+    await renderAgentStatePanel();
+  };
 }
 
 // ---------------- 事件绑定 ----------------
@@ -948,6 +1214,8 @@ function resetRunUi() {
   $('approveBox').hidden = true;
   $('completeError').hidden = true;
   $('selectedCount').textContent = '0';
+  session.stagedActions = [];
+  $('stagedActions').innerHTML = '';
   $('stateText').textContent = '';
 }
 
@@ -988,38 +1256,31 @@ function bind() {
     await persistSettings({ ...session.settings, dailyGreetingCap: v });
   };
   $('toApproveBtn').onclick = () => {
-    if (!session.selectedIds.size) {
+    stageGreetingActions().catch((e) => {
       $('completeError').hidden = false;
-      $('completeError').textContent = '请先勾选要联系的岗位。';
-      return;
-    }
-    $('approveBox').hidden = false;
-    $('approveCount').textContent = String(session.selectedIds.size);
+      $('completeError').className = 'box box-error';
+      $('completeError').textContent = `创建 Action 失败：${e?.message ?? e}`;
+    });
   };
-  $('cancelApprove').onclick = () => {
+  $('cancelApprove').onclick = async () => {
     $('approveBox').hidden = true;
+    const staged = session.stagedActions ?? [];
+    for (const a of staged) {
+      await markSkipped(a.actionId, { reason: '用户在二次确认时取消' });
+    }
+    if (staged.length) addActivity('ActionQueue', `已取消 ${staged.length} 个待确认 Action（skipped）`);
+    session.stagedActions = [];
+    await renderAgentStatePanel();
   };
   $('approveBtn').onclick = async () => {
     $('completeError').hidden = true;
     $('approveBtn').disabled = true;
     try {
-      // Review 的输入框就是话术的唯一编辑面：发送前把它固化进 settings，
-      // 避免"界面里改了、实际发的是旧模板"这种不一致。
-      const typed = $('greetText').value;
-      if (typed.trim() !== session.settings?.greetingStrategy?.template) {
-        const next = await saveSettings({
-          ...session.settings,
-          greetingStrategy: { ...session.settings.greetingStrategy, mode: 'template', template: typed },
-        });
-        session.settings = next;
-        renderTemplateForm();
-      }
-      await chrome.storage.local.set({ greetText: session.settings.greetingStrategy.template });
-      await greetSelected();
+      await executeStagedActions();
     } catch (e) {
       $('completeError').hidden = false;
       $('completeError').className = 'box box-error';
-      $('completeError').textContent = `话术不可用：${e?.message ?? e}`;
+      $('completeError').textContent = `执行失败：${e?.message ?? e}`;
     } finally {
       $('approveBtn').disabled = false;
     }
@@ -1057,12 +1318,26 @@ async function init() {
   fillSettingsForm();
   renderTemplateForm();
   bindSettingsUi();
+  // Phase 2：上次运行中断在 executing 的 Action 需要人工确认（绝不自动重发）
+  try {
+    const recovered = await recoverInterruptedActions();
+    if (recovered.count > 0) {
+      addActivity('ActionQueue', `${recovered.count} 个 Action 上次执行中断，已标记为 requires_manual，请人工确认`);
+      const box = $('idleError');
+      box.hidden = false;
+      box.className = 'box box-warn';
+      box.textContent = `${recovered.count} 个 Action 在上次执行中被打断（可能是 Side Panel 关闭或页面刷新）。无法确定消息是否已发出，已标记为「需人工确认」，请到 BOSS 消息列表核对后再决定是否重试。`;
+    }
+  } catch (e) {
+    addActivity('ActionQueue', `恢复中断 Action 失败：${e?.message ?? e}`);
+  }
   await Promise.all([checkBoss(), checkAi()]);
   await getCurrentBossContext();
   await refreshQuota();
   await loadGreetText();
+  await renderAgentStatePanel();
 }
 
 init();
 
-export { AI_BASE, todayKey, isAutopilot, runPolicyPreview, setMode, checkBoss, checkAi, getCurrentBossContext, scheduleContextRefresh, findBossTab, gotoSearch, fetchDetail };
+export { AI_BASE, todayKey, isAutopilot, runPolicyPreview, setMode, stageGreetingActions, executeStagedActions, selectedJobs, checkBoss, checkAi, getCurrentBossContext, scheduleContextRefresh, findBossTab, gotoSearch, fetchDetail };

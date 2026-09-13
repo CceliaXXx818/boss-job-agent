@@ -38,7 +38,7 @@ describe('settings 默认值（安全基线）', () => {
     const s = norm({});
     expect(s.batchQualifiedTarget).toBe(10);
     expect(s.minimumAutoGreetingScore).toBe(80);
-    expect(s.dailyGreetingCap).toBe(20);
+    expect(s.dailyGreetingCap).toBe(5); // V0.5 保守默认值
     expect(s.maxDiscoveryRounds).toBe(3);
     expect(s.maxReplanPerRound).toBe(1);
     expect(s.monitorIntervalMinutes).toBe(10);
@@ -169,7 +169,7 @@ describe('V0.4 旧数据迁移（只读一次）', () => {
   });
 
   it('旧值非法时仍回退默认', () => {
-    expect(norm({}, { dailyCap: 0 }).dailyGreetingCap).toBe(20);
+    expect(norm({}, { dailyCap: 0 }).dailyGreetingCap).toBe(5);
     expect(norm({}, { greetText: '  ' }).greetingStrategy.template).toBe(DEFAULT_GREETING_TEMPLATE);
   });
 });
@@ -257,7 +257,7 @@ describe('loadSettings / saveSettings（仅读写 jobAgentSettings）', () => {
     vi.stubGlobal('chrome', makeChrome());
     const s = await loadSettings();
     expect(s.mode).toBe('review');
-    expect(s.dailyGreetingCap).toBe(20);
+    expect(s.dailyGreetingCap).toBe(5); // V0.5 保守默认值
   });
 
   it('读取 V0.4 旧 key（dailyCap / greetText）完成一次迁移', async () => {

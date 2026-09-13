@@ -79,6 +79,18 @@
     <div id="policyPreviewResult" class="muted small"></div>
   </details>
 
+  <details class="activity" id="agentStateBox">
+    <summary>运行状态（持久化：Action Queue / 岗位状态 / 事件）</summary>
+    <p class="muted small">这些数据存在 chrome.storage，关掉 Side Panel 再打开依然存在。</p>
+    <div id="agentStateBody" class="muted small">读取中…</div>
+    <div class="row">
+      <button id="refreshState" class="btn-secondary">刷新</button>
+      <button id="pruneEventsBtn" class="btn-secondary">清理 30 天前事件</button>
+      <button id="pruneActionsBtn" class="btn-secondary">清理旧 Action</button>
+      <span id="stateMsg" class="muted small"></span>
+    </div>
+  </details>
+
   <!-- ===== IDLE ===== -->
   <section id="stateIdle" class="state">
     <p class="hint">今天想找什么工作？用一句话描述即可（城市、方向、薪资、排除项）。</p>
@@ -143,7 +155,8 @@
         <li><span>今日已联系</span><b id="approveQuota">0 / 5</b></li>
         <li><span>今日最大数量</span><b id="approveCap">5</b></li>
       </ul>
-      <label class="small muted">打招呼话术</label>
+      <div id="stagedActions" class="small muted"></div>
+      <label class="small muted">打招呼话术（确认后固化到 Action，之后改模板不会影响已确认的 Action）</label>
       <textarea id="greetText" rows="3"></textarea>
       <div class="row">
         <button id="approveBtn" class="btn-primary">确认并联系选中岗位</button>

@@ -14,7 +14,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // Autopilot 核心参数（V0.5 §7）
   batchQualifiedTarget: 10,
   minimumAutoGreetingScore: 80,
-  dailyGreetingCap: 20,
+  // V0.5 第一版采用保守默认值：第一次让 Agent 执行真实外部行为，默认安全优先。
+  // 用户可在 Autopilot 设置里主动提高。
+  dailyGreetingCap: 5,
   maxDiscoveryRounds: 3,
   maxReplanPerRound: 1,
 
