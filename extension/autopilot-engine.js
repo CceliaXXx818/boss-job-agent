@@ -61,6 +61,26 @@ export const MAX_ACTIONS_PER_ROUND = 20;
 
 const DEFAULT_TARGET_QUALIFIED = 10;
 const AI_UNAVAILABLE = RISK_REASONS.AI_SERVICE_UNAVAILABLE;
+/** 距离工作时间结束不足这么多分钟时，启动会给出"本轮可能跑不完"的提醒 */
+export const MIN_ROUND_WINDOW_MINUTES = 15;
+
+/** 距离工作时间结束还剩多少分钟（支持跨夜窗口；不在窗口内返回 0） */
+export function minutesUntilWindowEnd(nowHHMM, startHHMM, endHHMM) {
+  const toMin = (v) => {
+    const m = /^(\d{2}):(\d{2})$/.exec(String(v ?? ''));
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const now = toMin(nowHHMM);
+  const start = toMin(startHHMM);
+  const end = toMin(endHHMM);
+  if (now === null || start === null || end === null) return null;
+  if (start === end) return 24 * 60;
+  const inside = start < end ? now >= start && now <= end : now >= start || now <= end;
+  if (!inside) return 0;
+  if (start < end) return end - now;
+  // 跨夜窗口：已过 start（当天夜里）→ 跨到明天；在 start 之前（凌晨）→ 直接到今天 end
+  return now >= start ? end + 24 * 60 - now : end - now;
+}
 
 /**
  * @param {{
@@ -162,7 +182,7 @@ export function createAutopilotEngine(deps) {
 
   /**
    * @param {{rawGoal: string}} input
-   * @returns {Promise<{ok: boolean, status?: string, reason?: string, code?: string, runtime?: object}>}
+   * @returns {Promise<{ok: boolean, status?: string, reason?: string, code?: string, windowWarning?: string|null, runtime?: object}>}
    */
   async function startAutopilot({ rawGoal }) {
     const goal = String(rawGoal ?? '').trim();
@@ -245,11 +265,30 @@ export function createAutopilotEngine(deps) {
     });
     activity(`Autopilot started｜城市 ${context.cityName}｜今日已联系 ${todayGreetingCount}/${settings.dailyGreetingCap}`);
 
+    // 提醒：离工作时间结束太近，本轮很可能跑不完（不改变执行规则，只提示）
+    const remainMinutes = minutesUntilWindowEnd(
+      deps.core.hhmm(now()),
+      settings.workingHours.start,
+      settings.workingHours.end,
+    );
+    let windowWarning = null;
+    if (remainMinutes !== null && remainMinutes < MIN_ROUND_WINDOW_MINUTES) {
+      windowWarning = `距离工作时间结束只剩 ${remainMinutes} 分钟（${settings.workingHours.start}-${settings.workingHours.end}），本轮搜索很可能无法跑完就会被自动收工；建议改到下一个工作日再启动。`;
+      await patchRuntime((r) => ({ ...r, log: appendLog(r, `提醒：${windowWarning}`) }));
+      activity(`提醒：${windowWarning}`);
+    }
+
     if (capReached) {
       activity(`今日已达上限 ${settings.dailyGreetingCap}，不进入 Discovery，直接结束本轮 Outreach`);
-      return { ok: true, status: AUTOPILOT_STATUS.OUTREACH_COMPLETE, reason: RISK_REASONS.DAILY_CAP_REACHED, runtime: started };
+      return {
+        ok: true,
+        status: AUTOPILOT_STATUS.OUTREACH_COMPLETE,
+        reason: RISK_REASONS.DAILY_CAP_REACHED,
+        windowWarning,
+        runtime: started,
+      };
     }
-    return { ok: true, status: started.status, runtime: started };
+    return { ok: true, status: started.status, windowWarning, runtime: started };
   }
 
   // ---------------- 暂停 / 恢复 / 停止 ----------------
@@ -862,11 +901,9 @@ export function createAutopilotEngine(deps) {
       `Round ${rt.roundIndex} completed｜发现 ${stats.discoveredCount}｜过滤后 ${stats.filteredCount}｜评分 ${stats.analyzedCount}｜推荐 ${stats.recommendedCount}｜Replan ${stats.replanCount}`,
     );
 
-    const withinWorkingHours = deps.settings.isWithinWorkingHours(
-      deps.core.hhmm(now()),
-      rt.workingHours?.start ?? '09:00',
-      rt.workingHours?.end ?? '18:00',
-    );
+    const winStart = rt.workingHours?.start ?? '09:00';
+    const winEnd = rt.workingHours?.end ?? '18:00';
+    const withinWorkingHours = deps.settings.isWithinWorkingHours(deps.core.hhmm(now()), winStart, winEnd);
     const decision = decideAfterRound({
       todayGreetingCount: daily.effective,
       dailyGreetingCap: rt.dailyGreetingCap,
@@ -879,9 +916,13 @@ export function createAutopilotEngine(deps) {
     });
 
     if (decision.action === 'COMPLETE') {
+      const reason =
+        decision.code === 'OUTSIDE_WORKING_HOURS'
+          ? `${decision.reason}（当前本地时间 ${deps.core.hhmm(now())}，工作时间 ${winStart}-${winEnd}）`
+          : decision.reason;
       return {
         patch: { todayGreetingCount: daily.effective },
-        finish: { reason: decision.reason, code: decision.code },
+        finish: { reason, code: decision.code },
       };
     }
 
@@ -1008,7 +1049,11 @@ export function createAutopilotEngine(deps) {
       rt.workingHours?.end ?? settings.workingHours.end,
     );
     if (!inHours) {
-      const fin = await finishOutreach('已超出工作时间', RISK_REASONS.OUTSIDE_WORKING_HOURS);
+      const win = `${rt.workingHours?.start ?? settings.workingHours.start}-${rt.workingHours?.end ?? settings.workingHours.end}`;
+      const fin = await finishOutreach(
+        `已超出工作时间（当前本地时间 ${deps.core.hhmm(now())}，工作时间 ${win}）`,
+        RISK_REASONS.OUTSIDE_WORKING_HOURS,
+      );
       return { ok: true, status: fin.status, step: AUTOPILOT_STEPS.FINISH, advanced: true, done: true };
     }
 
@@ -1108,7 +1153,7 @@ export function createAutopilotEngine(deps) {
       dailyGreetingCap: rt.dailyGreetingCap,
       queue,
       jobStates: states,
-      log: (rt.log ?? []).slice(-12),
+      log: (rt.log ?? []).slice(-30),
       activeActionId: rt.activeActionId,
       startedAt: rt.startedAt,
       completedAt: rt.completedAt,

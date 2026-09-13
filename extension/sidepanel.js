@@ -75,6 +75,20 @@ const AI_TIMEOUT = AI_TIMEOUTS.health;
 const DETAIL_LIMIT = 15;
 
 const $ = (id) => document.getElementById(id);
+
+/**
+ * 把 ISO（UTC）时间格式化为本地 HH:MM:SS。
+ * 修复：之前对 ISO 字符串直接 slice(11,19) 会显示 UTC 时间，
+ * 导致"日志写着 10:01，实际本地已经 18:01"，用户会误以为工作时间判断出错。
+ */
+export function formatLocalTime(iso, withSeconds = true) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso).slice(11, 19);
+  const pad = (n) => String(n).padStart(2, '0');
+  const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return withSeconds ? `${hhmm}:${pad(d.getSeconds())}` : hhmm;
+}
 const todayKey = () => new Date().toISOString().slice(0, 10);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -815,7 +829,7 @@ export async function refreshAutopilotStatus() {
     ? log
         .slice()
         .reverse()
-        .map((l) => `<div class="state-line">${escapeHtml(String(l.at).slice(11, 19))} ${escapeHtml(l.text)}</div>`)
+        .map((l) => `<div class="state-line">${escapeHtml(formatLocalTime(l.at))} ${escapeHtml(l.text)}</div>`)
         .join('')
     : '<span class="muted">（暂无）</span>';
 
@@ -842,6 +856,8 @@ function bindAutopilotDashboard() {
         apShowMessage(`未启动：${res?.reason ?? '未知原因'}`, 'error');
       } else if (res.status === 'OUTREACH_COMPLETE') {
         apShowMessage(`今日已达每日上限 ${session.settings?.dailyGreetingCap ?? 5}，未进入 Discovery，直接结束本轮 Outreach。`, 'warn');
+      } else if (res.windowWarning) {
+        apShowMessage(`Autopilot 已启动，但请注意：${res.windowWarning}`, 'warn');
       } else {
         apShowMessage('Autopilot 已启动：Background 会按步骤推进，关掉本面板也会继续运行。', 'info');
       }
@@ -929,7 +945,7 @@ export async function renderAgentStatePanel() {
       `<div><b>Action Queue</b>：待确认 ${queue.pending} · 已确认 ${queue.approved} · 执行中 ${queue.executing} · 成功 ${queue.success} · 失败 ${queue.failed} · 跳过 ${queue.skipped} · 需人工 ${queue.requiresManual}</div>` +
       `<div><b>岗位状态</b>：${stateLine}</div>` +
       `<div><b>事件</b>：共 ${meta.totalEvents ?? 0} 条，覆盖 ${dates.length} 天（保留 ${meta.retentionDays ?? 30} 天）；最近清理 ${
-        meta.lastPrunedAt ? escapeHtml(String(meta.lastPrunedAt).slice(0, 19).replace('T', ' ')) : '从未'
+        meta.lastPrunedAt ? escapeHtml(formatLocalTime(meta.lastPrunedAt)) : '从未'
       }</div>` +
       `<div><b>最近 Action</b>：</div>${actionLines}`;
   } catch (e) {
