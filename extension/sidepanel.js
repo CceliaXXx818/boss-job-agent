@@ -230,7 +230,25 @@ export async function runAgent(rawGoal) {
       signal: AbortSignal.timeout(60000),
     }).then((r) => r.json());
     if (!planRes?.ok) throw new Error(friendlyError(`规划失败：${planRes?.error ?? 'AI 服务未就绪（请先 npm run score:serve）'}`));
-    const { goal, queries, warnings, successCriteria, mentionedCities } = planRes.plan;
+    let { goal, queries, warnings, successCriteria, mentionedCities } = planRes.plan;
+
+    // 防御 A：服务端可能是旧进程 / 返回旧结构 → 强制以当前 Browser Context 为准
+    if (!bossContext.cityCode) {
+      throw new Error('无法获取当前城市 code，请在 BOSS 岗位列表页选择城市后再开始。');
+    }
+    const planCity = goal.cities?.[0];
+    if (!planCity || planCity.code !== bossContext.cityCode) {
+      const keywords = [...new Set((queries ?? []).map((q) => q.keyword))].slice(0, 6);
+      addActivity(
+        'Context',
+        `计划城市为 ${planCity?.name ?? '未知'}，与当前 BOSS 城市 ${bossContext.cityName} 不一致，已按当前城市重建 ${keywords.length} 个搜索任务`,
+      );
+      goal = { ...goal, cities: [{ name: bossContext.cityName, code: bossContext.cityCode }] };
+      queries = keywords.map((k) => ({ cityName: bossContext.cityName, cityCode: bossContext.cityCode, keyword: k, source: 'initial' }));
+    }
+    // 防御 B：兼容旧服务返回的字段名（excludeTokens → hardExclusions）
+    goal.hardExclusions = goal.hardExclusions ?? goal.excludeTokens ?? [];
+    goal.softNegativePreferences = goal.softNegativePreferences ?? [];
     // Case C：Goal 提到的城市与当前 BOSS 城市冲突 → 不自动切城市，直接停下并提示
     const conflict = detectCityConflict(mentionedCities, bossContext.cityName);
     if (conflict.conflict) {

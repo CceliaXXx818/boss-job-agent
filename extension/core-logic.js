@@ -32,16 +32,30 @@ const CITY_TEXT_RE = /^[\u4e00-\u9fa5]{2,8}(市|省|自治州)?$/;
  */
 export function resolveBossContext(page, knownCodes = KNOWN_CITY_CODES) {
   if (!page) return null;
-  const code = String(page.codeFromUrl ?? '').trim();
+  let code = String(page.codeFromUrl ?? '').trim();
   const domTexts = (page.domCandidates ?? [])
     .map((c) => String(c.text ?? '').trim())
     .filter((t) => CITY_TEXT_RE.test(t));
   // DOM 文本里优先"纯城市名"（不含"切换/城市"等词）
-  const domName = domTexts.find((t) => !/切换|选择|城市|热门|更多/.test(t)) ?? '';
+  const domName = (domTexts.find((t) => !/切换|选择|城市|热门|更多/.test(t)) ?? '').replace(/市$/, '');
   let cityName = '';
   if (code && knownCodes[code]) cityName = knownCodes[code];
-  if (!cityName && domName) cityName = domName.replace(/市$/, '');
+  if (!cityName && domName) cityName = domName;
   if (!cityName && code) cityName = `城市${code}`;
+
+  // V0.4.1-fix：URL 无 city code 时兜底
+  if (!code) {
+    // ① 页面里带 city code 的链接，且文本与当前城市名一致
+    const hit = (page.codeCandidates ?? []).find(
+      (c) => cityName && String(c.text ?? '').replace(/市$/, '') === cityName,
+    );
+    if (hit?.code) code = String(hit.code);
+  }
+  if (!code && cityName) {
+    // ② name → code 反查（仅常见城市，作为兜底）
+    const guessed = Object.entries(knownCodes).find(([, name]) => name === cityName)?.[0];
+    if (guessed) code = guessed;
+  }
   if (!code && !cityName) return null;
   const pageType = /\/job_detail\//.test(page.url ?? '')
     ? 'job-detail'

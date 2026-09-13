@@ -58,7 +58,7 @@ const server = createServer(async (req, res) => {
     return;
   }
   if (req.method === 'GET' && req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true }));
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, version: '0.4.1' }));
     return;
   }
   if (req.method === 'GET' && req.url === '/config') {

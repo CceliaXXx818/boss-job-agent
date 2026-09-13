@@ -58,6 +58,24 @@ describe('V0.4.1 Browser Context 城市识别', () => {
     expect(second?.cityName).not.toBe(first?.cityName);
   });
 
+  it('URL 无 city code 但有城市名 → 用 name→code 兜底（如上海/北京）', () => {
+    const ctx = resolveBossContext(page('', ['上海']));
+    expect(ctx?.cityName).toBe('上海');
+    expect(ctx?.cityCode).toBe('101020100');
+    const bj = resolveBossContext(page('', ['北京']));
+    expect(bj?.cityCode).toBe('101010100');
+  });
+
+  it('页面链接里带 city code 时优先采用（文本与当前城市匹配）', () => {
+    const ctx = resolveBossContext({
+      url: 'https://www.zhipin.com/web/geek/jobs',
+      codeFromUrl: '',
+      domCandidates: [{ text: '上海', cls: 'city-name', y: 10 }],
+      codeCandidates: [{ code: '101020100', text: '上海' }, { code: '101010100', text: '北京' }],
+    });
+    expect(ctx?.cityCode).toBe('101020100');
+  });
+
   it('fallback 映射表包含常见城市（仅作兜底，不再是白名单）', () => {
     for (const name of ['上海', '北京', '杭州', '深圳', '广州']) {
       expect(Object.values(KNOWN_CITY_CODES)).toContain(name);

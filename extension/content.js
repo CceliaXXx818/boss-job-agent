@@ -425,10 +425,19 @@ function bossContext() {
     candidates.push({ text: t, cls, y: Math.round(r.y) });
   }
   candidates.sort((a, b) => a.y - b.y);
+  // 页面里带 city code 的链接（城市选择器/城市站点入口）
+  const codeCandidates = [];
+  for (const a of document.querySelectorAll('a[href*="city="],a[href*="/chengshi/"]')) {
+    const m = (a.getAttribute('href') ?? '').match(/city=(\d{6,})|\/chengshi\/c(\d{6,})/);
+    const code = m?.[1] || m?.[2] || '';
+    const t = (a.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (code && t && t.length <= 12) codeCandidates.push({ code, text: t });
+  }
   return {
     url,
     title: document.title,
     codeFromUrl,
+    codeCandidates: codeCandidates.slice(0, 12),
     domCandidates: candidates.slice(0, 8),
     // 顶部可见文字，供无候选时人工校准
     topTexts: visibleLeafTexts().slice(0, 20),
