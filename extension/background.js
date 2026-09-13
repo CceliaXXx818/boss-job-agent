@@ -24,6 +24,7 @@ import {
 } from './autopilot-runtime.js';
 import * as settings from './settings.js';
 import * as events from './event-store.js';
+import { localDateKey } from './event-store.js';
 import * as states from './job-state.js';
 import * as queue from './action-queue.js';
 import * as records from './agent-records.js';
@@ -31,6 +32,7 @@ import * as policy from './autopilot-policy.js';
 import * as greeting from './greeting-builder.js';
 import * as ai from './ai-client.js';
 import * as core from './core-logic.js';
+import * as dailyReport from './daily-report-service.js';
 
 /** 每次唤醒最多推进的 bounded step 数（每个 step 之间都会 persist） */
 export const MAX_STEPS_PER_WAKE = 3;
@@ -343,6 +345,8 @@ export async function handleCommand(message) {
       const res = await eng.startAutopilot({ rawGoal: message.goal });
       if (res.ok) scheduleFastTick();
       await ensureAlarms();
+      // 启动 Autopilot 是 catch-up 的一个合适时机（V0.5 §17）
+      await catchUpDailyReport();
       return res;
     }
     case 'PAUSE_AUTOPILOT': {
@@ -363,6 +367,40 @@ export async function handleCommand(message) {
     }
     case 'GET_AUTOPILOT_STATUS':
       return eng.getStatus();
+    case 'GET_DAILY_REPORT': {
+      // 正式日报已生成 → 返回快照；否则实时预览（预览不写任何东西，V0.5 §18）
+      const date = message.date ?? localDateKey();
+      const snapshot = message.preview ? null : await dailyReport.getSnapshot(date);
+      if (snapshot) {
+        return {
+          ok: true,
+          source: 'snapshot',
+          date: snapshot.date,
+          generatedAt: snapshot.generatedAt,
+          report: snapshot.report,
+        };
+      }
+      const report = await dailyReport.previewDailyReport({ date: message.date ?? null });
+      return { ok: true, source: 'preview', date: report.date, generatedAt: null, report };
+    }
+    case 'CATCH_UP_DAILY_REPORT': {
+      // 时间感知：未到 dailyReportTime / 已生成 → 什么都不做（V0.5 §17）
+      const res = await dailyReport.catchUpIfNeeded({ now: new Date() });
+      return { ok: true, generated: res.generated, reason: res.reason, date: res.date ?? null };
+    }
+    case 'GENERATE_DAILY_REPORT': {
+      // 显式生成（测试 / 未来"手动生成正式日报"按钮）：仍按 date 幂等
+      const res = await dailyReport.generateDailyReportOnce({ date: message.date ?? null });
+      return { ok: true, created: res.created, source: res.source, date: res.snapshot.date, report: res.snapshot.report };
+    }
+    case 'GET_DAILY_REPORT_STATUS': {
+      const [check, snapshots, cfg] = await Promise.all([
+        dailyReport.shouldCatchUp({}),
+        dailyReport.listSnapshots({ limit: 30 }),
+        settings.loadSettings(),
+      ]);
+      return { ok: true, enabled: cfg.dailyReportEnabled, reportTime: cfg.dailyReportTime, catchUp: check, snapshots };
+    }
     case 'ADVANCE_AUTOPILOT': {
       // 仅用于调试/测试：手工推进一个 tick
       const res = await runTick({ steps: Number(message.steps) || 1, source: 'manual' });
@@ -382,6 +420,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'STOP_AUTOPILOT',
     'GET_AUTOPILOT_STATUS',
     'ADVANCE_AUTOPILOT',
+    'GET_DAILY_REPORT',
+    'GENERATE_DAILY_REPORT',
+    'CATCH_UP_DAILY_REPORT',
+    'GET_DAILY_REPORT_STATUS',
   ];
   if (!known.includes(message.type)) return false;
   handleCommand(message)
@@ -393,14 +435,37 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // ---------------- 生命周期 ----------------
 
 chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm?.name === dailyReport.REPORT_ALARM) {
+    runDailyReport({ source: 'alarm' }).catch((e) => console.error('[daily-report] failed', e));
+    return;
+  }
   if (!alarm?.name?.startsWith(TICK_ALARM)) return;
   runTick({ source: alarm.name }).catch((e) => console.error('[autopilot] tick failed', e));
 });
+
+/** 生成正式日报（幂等）+ 重新排下一天的 alarm */
+async function runDailyReport({ source = 'alarm' } = {}) {
+  const res = await dailyReport.catchUpIfNeeded({ now: new Date() });
+  await dailyReport.ensureDailyReportAlarm({ now: new Date() });
+  console.log('[daily-report]', source, res.reason, res.generated ? 'generated' : 'skipped');
+  return res;
+}
+
+/** catch-up：任何"合适的唤醒点"都调用（幂等，已生成则立刻返回） */
+async function catchUpDailyReport() {
+  try {
+    return await runDailyReport({ source: 'catch-up' });
+  } catch (e) {
+    console.error('[daily-report] catch-up failed', e);
+    return { ok: false, generated: false, reason: String(e?.message ?? e) };
+  }
+}
 
 chrome.runtime.onStartup.addListener(() => {
   getEngine()
     .recoverInterrupted()
     .then(() => ensureAlarms())
+    .then(() => runDailyReport({ source: 'startup' })) // 18:00 没开着 → 启动时补生成
     .then(() => runTick({ steps: 1, source: 'startup' }))
     .catch((e) => console.error('[autopilot] startup failed', e));
 });
@@ -408,7 +473,9 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.runtime.onInstalled.addListener(() => {
   getEngine()
     .recoverInterrupted()
-    .catch((e) => console.error('[autopilot] install recovery failed', e));
+    .catch((e) => console.error('[autopilot] install recovery failed', e))
+    .then(() => dailyReport.ensureDailyReportAlarm({ now: new Date() }))
+    .catch((e) => console.error('[daily-report] install alarm failed', e));
 });
 
 // 执行标签导航完成后立即推进一步：事件驱动，而不是定时轮询
@@ -422,6 +489,11 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
     })
     .catch(() => {});
 });
+
+dailyReport
+  .ensureDailyReportAlarm({ now: new Date() })
+  .then((r) => console.log('[daily-report] alarm', r))
+  .catch((e) => console.error('[daily-report] alarm failed', e));
 
 console.log('[autopilot] background service worker ready', {
   maxStepsPerWake: MAX_STEPS_PER_WAKE,

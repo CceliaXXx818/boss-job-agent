@@ -83,6 +83,7 @@ export async function hasGreeted(jobId) {
  *   score?: number|null,
  *   actionId?: string|null,
  *   mode?: 'review'|'autopilot',
+ *   roundIndex?: number|null,
  *   at?: Date|string
  * }} input
  */
@@ -94,6 +95,7 @@ export async function recordGreetingSuccess({
   score = null,
   actionId = null,
   mode = 'review',
+  roundIndex = null,
   at = null,
 }) {
   const jobId = job?.jobId;
@@ -120,6 +122,8 @@ export async function recordGreetingSuccess({
         score: Number.isFinite(Number(score)) ? Number(score) : null,
         actionId: actionId ?? null,
         mode,
+        // 日报按轮次归类用；Review 手动联系时为 null（日报退化为按时间窗归类）
+        roundIndex: Number.isFinite(Number(roundIndex)) ? Number(roundIndex) : null,
       },
     },
     { now: new Date(timestamp) },
@@ -205,7 +209,14 @@ export async function recordJobsDiscovered({ jobs, round = 1, mode = 'review', l
       company: j.company ?? null,
       jobTitle: j.title ?? null,
       idempotencyKey: `discovered:${j.jobId}`,
-      metadata: { round, mode, salary: j.salary ?? null, city: j.city ?? null, tags: j.__tags ?? null },
+      metadata: {
+        round,
+        mode,
+        salary: j.salary ?? null,
+        city: j.city ?? null,
+        tags: j.__tags ?? null,
+        href: j.href ?? null,
+      },
     })),
     { now: new Date(timestamp) },
   );
@@ -244,7 +255,7 @@ export async function recordJobsScored({ jobs, mode = 'review', at = null }) {
       company: j.company ?? null,
       jobTitle: j.title ?? null,
       idempotencyKey: `scored:${j.jobId}`,
-      metadata: { mode, score: j.__ai?.score ?? null, tier: j.__ai?.tier ?? null },
+      metadata: { mode, score: j.__ai?.score ?? null, tier: j.__ai?.tier ?? null, href: j.href ?? null },
     })),
     { now: new Date(timestamp) },
   );
@@ -273,7 +284,7 @@ export async function recordJobsShortlisted({ jobs, mode = 'review', at = null }
       company: j.company ?? null,
       jobTitle: j.title ?? null,
       idempotencyKey: `shortlisted:${j.jobId}:${localDateKey(new Date(timestamp))}`,
-      metadata: { mode, score: j.__ai?.score ?? null },
+      metadata: { mode, score: j.__ai?.score ?? null, href: j.href ?? null },
     })),
     { now: new Date(timestamp) },
   );

@@ -142,7 +142,8 @@ describe('Background 命令接口', () => {
     const res = await bg.handleCommand({ type: 'START_AUTOPILOT', goal: '上海 AI 产品经理' });
     expect(res.ok).toBe(false);
     expect(res.code).toBe('MODE_INVALID');
-    expect(alarmNames).toEqual([]); // 未启动就不该排期
+    // 未启动就不该排 Autopilot tick（日报 alarm 是另一条独立调度，允许存在）
+    expect(alarmNames).not.toContain('jobAgentAutopilotTick');
   });
 
   it('START_AUTOPILOT：cap 已满 → 直接 OUTREACH_COMPLETE，并建立唯一的执行标签', async () => {
@@ -247,6 +248,69 @@ describe('Background 命令接口', () => {
   it('未知命令返回结构化失败而不是抛错', async () => {
     const bg = await loadBackground();
     const res = await bg.handleCommand({ type: 'DO_SOMETHING' });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('未知命令');
+  });
+});
+
+describe('Background 日报命令（Phase 4）', () => {
+  const DAY = localDateKey();
+
+  it('GET_DAILY_REPORT：没有正式日报时返回实时预览（source=preview，不写 snapshot）', async () => {
+    store['jobAgentSettings'] = autopilotSettings();
+    const bg = await loadBackground();
+    const res = await bg.handleCommand({ type: 'GET_DAILY_REPORT' });
+    expect(res.ok).toBe(true);
+    expect(res.source).toBe('preview');
+    expect(res.generatedAt).toBeNull();
+    expect(res.report.summary.contacted).toBe(0);
+    expect(store[`jobAgentDailyReport:${DAY}`]).toBeUndefined();
+  });
+
+  it('CATCH_UP_DAILY_REPORT：未到日报时间 → 不生成', async () => {
+    store['jobAgentSettings'] = autopilotSettings({ dailyReportTime: '23:59' });
+    const bg = await loadBackground();
+    const res = await bg.handleCommand({ type: 'CATCH_UP_DAILY_REPORT' });
+    expect(res.ok).toBe(true);
+    expect(res.generated).toBe(false);
+    expect(res.reason).toBe('BEFORE_REPORT_TIME');
+    expect(store[`jobAgentDailyReport:${DAY}`]).toBeUndefined();
+  });
+
+  it('GENERATE_DAILY_REPORT：显式生成一次 → 写 snapshot，之后 GET 返回 snapshot', async () => {
+    store['jobAgentSettings'] = autopilotSettings();
+    const bg = await loadBackground();
+    const gen = await bg.handleCommand({ type: 'GENERATE_DAILY_REPORT' });
+    expect(gen.ok).toBe(true);
+    expect(gen.created).toBe(true);
+    expect(gen.source).toBe('generated');
+    expect(store[`jobAgentDailyReport:${DAY}`]).toBeTruthy();
+
+    const again = await bg.handleCommand({ type: 'GENERATE_DAILY_REPORT' });
+    expect(again.created).toBe(false);
+
+    const got = await bg.handleCommand({ type: 'GET_DAILY_REPORT' });
+    expect(got.source).toBe('snapshot');
+    expect(got.date).toBe(DAY);
+    expect(got.generatedAt).toBeTruthy();
+  });
+
+  it('GET_DAILY_REPORT_STATUS：返回开关 / 时间 / 待生成的 catch-up 状态 / 快照列表', async () => {
+    store['jobAgentSettings'] = autopilotSettings({ dailyReportTime: '18:00' });
+    const bg = await loadBackground();
+    const res = await bg.handleCommand({ type: 'GET_DAILY_REPORT_STATUS' });
+    expect(res.ok).toBe(true);
+    expect(res.enabled).toBe(true);
+    expect(res.reportTime).toBe('18:00');
+    expect(res.catchUp).toHaveProperty('needed');
+    expect(Array.isArray(res.snapshots)).toBe(true);
+    // 日报时间已过 → 允许补生成（needed 由当前时间决定，这里只断言结构）
+    expect(['CATCH_UP', 'BEFORE_REPORT_TIME', 'SNAPSHOT_EXISTS', 'ALREADY_GENERATED', 'DISABLED']).toContain(res.catchUp.reason);
+  });
+
+  it('未知日报命令不接管', async () => {
+    const bg = await loadBackground();
+    const res = await bg.handleCommand({ type: 'DAILY_REPORT_SOMETHING' });
     expect(res.ok).toBe(false);
     expect(res.reason).toContain('未知命令');
   });

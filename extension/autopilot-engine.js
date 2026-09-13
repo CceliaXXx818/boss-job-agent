@@ -423,6 +423,24 @@ export function createAutopilotEngine(deps) {
     return { recommended, eligible, rejected, greetingValid };
   }
 
+  /** 记录一次补充搜索决策（日报据此审计"Agent 怎么调整搜索策略"） */
+  async function recordReplanDecision(rt, info) {
+    await deps.events.appendEvent({
+      type: deps.events.EVENT_TYPES.REPLAN_DECIDED,
+      idempotencyKey: `replan:${rt.sessionId}:${info.roundIndex ?? rt.roundIndex}:${info.source}:${rt.replanCount ?? 0}`,
+      metadata: {
+        roundIndex: info.roundIndex ?? rt.roundIndex,
+        decision: info.decision,
+        reason: info.reason,
+        addedQueries: info.addedQueries ?? [],
+        eligibleCount: info.eligibleCount ?? 0,
+        targetCandidates: info.targetCandidates ?? null,
+        minimumAutoGreetingScore: rt.minimumAutoGreetingScore ?? null,
+        source: info.source,
+      },
+    });
+  }
+
   /** 本轮候选目标（只认设置里的 batchQualifiedTarget） */
   function roundTargetOf(rt) {
     return Number(rt.batchQualifiedTarget) || DEFAULT_TARGET_QUALIFIED;
@@ -762,6 +780,14 @@ export function createAutopilotEngine(deps) {
     if (!res?.ok) return { pause: res?.error ?? 'Replan 失败', code: RISK_REASONS.AI_SERVICE_UNAVAILABLE };
     if (res.status !== 'continue' || !(res.newQueries ?? []).length) {
       activity(`Replan：无需补充（${res.reason ?? '本轮结束'}）`);
+      await recordReplanDecision(rt, {
+        decision: 'complete',
+        reason: res.reason ?? '模型判断无需补充搜索词',
+        addedQueries: [],
+        eligibleCount: (rt.eligibleJobIds ?? []).length,
+        targetCandidates: roundTargetOf(rt),
+        source: 'in-round',
+      });
       return {
         patch: { log: appendLog(rt, 'Replan：无需补充') },
         nextStep: AUTOPILOT_STEPS.OUTREACH_CREATE,
@@ -780,6 +806,14 @@ export function createAutopilotEngine(deps) {
       return { patch: { log: appendLog(rt, 'Replan：无新增有效搜索词') }, nextStep: AUTOPILOT_STEPS.OUTREACH_CREATE };
     }
     activity(`Replan：新增搜索词 ${merged.added.map((q) => q.keyword).join('、')}`);
+    await recordReplanDecision(rt, {
+      decision: 'continue',
+      reason: res.reason ?? '候选不足，补充搜索词',
+      addedQueries: merged.added.map((q) => q.keyword),
+      eligibleCount: (rt.eligibleJobIds ?? []).length,
+      targetCandidates: roundTargetOf(rt),
+      source: 'in-round',
+    });
     return {
       patch: {
         currentPlan: { ...rt.currentPlan, queries: merged.queries },
@@ -983,6 +1017,7 @@ export function createAutopilotEngine(deps) {
           score: action.payload?.score ?? null,
           actionId,
           mode: 'autopilot',
+          roundIndex: rt.roundIndex,
           at: now(),
         });
         await deps.queue.markSuccess(actionId, { eventId: rec.eventId, now: now() });
@@ -1113,9 +1148,27 @@ export function createAutopilotEngine(deps) {
       cityName: rt.browserContext?.cityName,
     });
     if (!merged.added.length) {
+      await recordReplanDecision(rt, {
+        decision: 'complete',
+        reason: '无法产生新的搜索词（不会重复搜同一个关键词）',
+        addedQueries: [],
+        eligibleCount: (rt.eligibleJobIds ?? []).length,
+        targetCandidates: roundTargetOf(rt),
+        source: 'next-round',
+        roundIndex: rt.roundIndex + 1,
+      });
       return { finish: { reason: '无法产生新的搜索词（不会重复搜同一个关键词）', code: 'NO_NEW_RESULTS' } };
     }
     const nextRound = rt.roundIndex + 1;
+    await recordReplanDecision(rt, {
+      decision: 'continue',
+      reason: res.reason ?? '进入下一轮补充搜索',
+      addedQueries: merged.added.map((q) => q.keyword),
+      eligibleCount: (rt.eligibleJobIds ?? []).length,
+      targetCandidates: roundTargetOf(rt),
+      source: 'next-round',
+      roundIndex: nextRound,
+    });
     await deps.events.appendEvent({
       type: deps.events.EVENT_TYPES.DISCOVERY_ROUND_STARTED,
       idempotencyKey: `round-started:${rt.sessionId}:${nextRound}`,

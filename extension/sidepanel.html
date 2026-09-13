@@ -30,6 +30,18 @@
     <div id="autopilotState" class="muted small" hidden></div>
   </div>
 
+  <!-- ===== 每日求职日报（V0.5 Phase 4，Review / Autopilot 都可见） ===== -->
+  <details class="activity" id="dailyReportBox">
+    <summary>每日求职日报</summary>
+    <div id="drSummaryLine" class="small muted">读取中…</div>
+    <div class="row">
+      <button id="drViewBtn" class="btn-secondary">查看今日日报</button>
+      <button id="drExportBtn" class="btn-secondary">导出 Markdown</button>
+      <span id="drMsg" class="muted small"></span>
+    </div>
+    <div id="drBody" class="report-body" hidden></div>
+  </details>
+
   <!-- 以下 5 块只在 Autopilot 模式下显示（由 sidepanel.js renderModeUi 控制） -->
   <div id="autopilotPanels" hidden>
   <details class="activity" id="autopilotSettingsBox">
@@ -43,9 +55,9 @@
       <label>工作时间止 <input id="setWorkEnd" type="text" placeholder="18:00" /></label>
       <label class="inline"><input id="setMonitor" type="checkbox" /> 监测 HR 回复（Phase 4）</label>
       <label>监测间隔（分钟） <input id="setMonitorInterval" type="number" min="5" max="15" /></label>
-      <label class="inline"><input id="setDailyReport" type="checkbox" /> 生成每日日报</label>
+      <label class="inline"><input id="setDailyReport" type="checkbox" /> 每日求职日报（18:00 自动生成）</label>
       <label>日报时间 <input id="setReportTime" type="text" placeholder="18:00" /></label>
-      <label class="inline"><input id="setEmailReport" type="checkbox" /> 邮件发送日报（Phase 8）</label>
+      <label class="inline"><input id="setEmailReport" type="checkbox" disabled /> 邮件发送日报（尚未实现，Coming Soon）</label>
       <label class="inline"><input id="setAutoResume" type="checkbox" disabled /> 自动发送简历（Phase 6 校准后开放）</label>
     </div>
     <div class="row">

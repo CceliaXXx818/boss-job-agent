@@ -57,6 +57,7 @@ import {
   summarizeActions,
 } from './action-queue.js';
 import { RUNTIME_KEY } from './autopilot-runtime.js';
+import { renderDailyReportMarkdown } from './report-markdown.js';
 import {
   getDailyGreetingCount,
   getGreetedHistory,
@@ -902,6 +903,196 @@ function bindAutopilotStorageWatcher() {
   }
 }
 
+// ---------------- Phase 4：每日求职日报（Side Panel 只发命令 + 渲染，统计在 SW/report-builder） ----------------
+// 说明：正式日报由 Background 在 18:00（或 catch-up）生成并落盘；
+// 这里的「查看今日日报」是**实时预览**，不会产生 DAILY_REPORT_GENERATED 正式事件。
+
+function drLine(label, value, cls = '') {
+  return `<div class="report-line ${cls}">${escapeHtml(label)}：<b>${escapeHtml(String(value))}</b></div>`;
+}
+
+function renderDailyReportHtml(report) {
+  const r = report ?? {};
+  const s = r.summary ?? {};
+  const o = r.outreach ?? {};
+  const out = [];
+
+  out.push(`<h3>求职执行日报 ${escapeHtml(r.date ?? '')}</h3>`);
+  if (!r.hasActivity) out.push('<div class="report-muted">今天没有岗位搜索活动。</div>');
+
+  out.push('<h3>今日汇总</h3>');
+  out.push(
+    `<table>
+      <tr><td>发现岗位</td><td class="num">${s.discovered ?? 0}</td></tr>
+      <tr><td>AI 分析</td><td class="num">${s.analyzed ?? 0}</td></tr>
+      <tr><td>AI 推荐（≥75）</td><td class="num">${s.recommended ?? 0}</td></tr>
+      <tr><td>已联系</td><td class="num">${s.contacted ?? 0}</td></tr>
+      <tr><td>联系失败</td><td class="num">${s.greetingFailed ?? 0}</td></tr>
+      <tr><td>探索轮次 / 搜索词 / 补充搜索</td><td class="num">${s.discoveryRounds ?? 0} / ${s.searchQueries ?? 0} / ${s.replans ?? 0}</td></tr>
+    </table>`,
+  );
+
+  out.push('<h3>Outreach</h3>');
+  out.push(drLine('今日联系上限', o.dailyCap ?? 0));
+  out.push(drLine('已联系', `${o.contacted ?? 0} / ${o.dailyCap ?? 0}`));
+  out.push(
+    o.goalReached
+      ? '<div class="report-line report-goal-ok">✓ 今日联系目标已达成</div>'
+      : `<div class="report-line report-goal-no">未达成（剩余额度 ${o.remainingQuota ?? 0}）</div>`,
+  );
+  out.push(drLine('停止原因', `${o.stopReasonLabel ?? '—'}${o.stopReasonDetail ? `（${o.stopReasonDetail}）` : ''}`));
+  if (o.modeSplit) out.push(drLine('联系来源', `Autopilot ${o.modeSplit.autopilot} / Review ${o.modeSplit.review}`));
+  if (o.policySkips) out.push(drLine('Policy 拒绝（未创建 Action）', o.policySkips));
+
+  if ((r.rounds ?? []).length) {
+    out.push('<h3>每轮表现</h3>');
+    for (const round of r.rounds) {
+      out.push(
+        `<div class="report-round">
+          <div><b>Round ${round.roundIndex}</b>${round.city ? `（${escapeHtml(round.city)}）` : ''}</div>
+          <div class="report-muted">搜索词 ${round.searchQueries?.length ?? 0} 个：${escapeHtml((round.searchQueries ?? []).join('、') || '—')}</div>
+          <div>发现 ${round.discovered}｜过滤 ${round.filtered}｜分析 ${round.analyzed}｜推荐 ${round.recommended}${
+            round.eligible !== null ? `｜可自动联系 ${round.eligible}${round.roundTarget ? ` / 目标 ${round.roundTarget}` : ''}` : ''
+          }</div>
+          <div>本轮联系 ${round.contacted}｜补充搜索：${
+            round.replan?.attempted
+              ? `是${(round.replan.addedQueries ?? []).length ? `（新增 ${escapeHtml((round.replan.addedQueries ?? []).join('、'))}）` : '（判定无需补充）'}`
+              : '否'
+          }</div>
+        </div>`,
+      );
+    }
+  }
+
+  if ((r.topCandidates ?? []).length) {
+    out.push('<h3>高分岗位</h3>');
+    out.push('<table><tr><th class="num">分数</th><th>岗位</th><th>公司</th><th>状态</th></tr>');
+    for (const c of r.topCandidates) {
+      const title = c.href
+        ? `<a href="https://www.zhipin.com${escapeHtml(c.href)}" target="_blank" rel="noreferrer">${escapeHtml(c.jobTitle ?? '—')}</a>`
+        : escapeHtml(c.jobTitle ?? '—');
+      out.push(
+        `<tr><td class="num">${c.score ?? '—'}</td><td>${title}</td><td>${escapeHtml(c.company ?? '—')}${
+          c.salary ? ` · ${escapeHtml(c.salary)}` : ''
+        }</td><td>${escapeHtml(c.contacted ? '已联系' : (c.state ?? '—'))}</td></tr>`,
+      );
+    }
+    out.push('</table>');
+  }
+
+  out.push('<h3>今日未联系的高质量候选</h3>');
+  if ((r.remainingCandidates ?? []).length) {
+    out.push(
+      `<div class="report-muted">共 ${r.remainingCandidatesTotal ?? r.remainingCandidates.length} 个（未联系 ≠ 明天一定联系：候选池消费策略尚未实现）</div>`,
+    );
+    for (const c of r.remainingCandidates) {
+      const title = c.href
+        ? `<a href="https://www.zhipin.com${escapeHtml(c.href)}" target="_blank" rel="noreferrer">${escapeHtml(c.jobTitle ?? '—')}</a>`
+        : escapeHtml(c.jobTitle ?? '—');
+      out.push(`<div class="report-line">${c.score}｜${title}｜${escapeHtml(c.company ?? '—')}</div>`);
+    }
+  } else {
+    out.push('<div class="report-muted">没有未联系的高质量候选。</div>');
+  }
+
+  if ((r.contactedToday ?? []).length) {
+    out.push('<details class="activity"><summary>今日已联系岗位（' + r.contactedToday.length + '）</summary>');
+    for (const c of r.contactedToday) {
+      out.push(
+        `<div class="report-line">${escapeHtml(c.time ?? '')}｜${escapeHtml(c.jobTitle ?? '—')}｜${escapeHtml(c.company ?? '—')}｜Score ${
+          c.score ?? '—'
+        }｜来源 ${escapeHtml(c.mode ?? '—')}｜话术策略 ${escapeHtml(c.greetingStrategy ?? '—')}</div>`,
+      );
+    }
+    out.push('</details>');
+  }
+
+  out.push('<h3>异常与暂停</h3>');
+  if ((r.issues ?? []).length) {
+    for (const i of r.issues) {
+      out.push(
+        `<div class="report-line report-issue">${escapeHtml(i.time ?? '')}｜${escapeHtml(i.type)}｜${escapeHtml(i.title ?? '')}${
+          i.detail ? `｜${escapeHtml(i.detail)}` : ''
+        }</div>`,
+      );
+    }
+  } else {
+    out.push('<div class="report-muted">No issues today.</div>');
+  }
+
+  out.push('<h3>尚未监测</h3>');
+  out.push(
+    '<div class="report-muted">HR 回复 / 简历请求 / 简历发送 / 面试：本版本还没有对话监测能力，因此不显示这些数字（不是 0）。</div>',
+  );
+  return out.join('');
+}
+
+let lastDailyReport = null;
+
+export async function refreshDailyReportSummary() {
+  const line = $('drSummaryLine');
+  if (!line) return null;
+  const res = await sendAutopilotCommand('GET_DAILY_REPORT');
+  if (!res?.ok) {
+    line.textContent = `日报读取失败：${res?.reason ?? '未知原因'}`;
+    return null;
+  }
+  lastDailyReport = res.report;
+  const s = res.report?.summary ?? {};
+  line.innerHTML = `${escapeHtml(res.date)}｜发现 <b>${s.discovered ?? 0}</b>｜分析 <b>${s.analyzed ?? 0}</b>｜推荐 <b>${
+    s.recommended ?? 0
+  }</b>｜已联系 <b>${s.contacted ?? 0}</b>｜失败 <b>${s.greetingFailed ?? 0}</b> <span class="report-muted">（${
+    res.source === 'snapshot' ? '正式日报快照' : '实时预览，未生成正式日报'
+  }）</span>`;
+  return res;
+}
+
+export async function toggleDailyReportView() {
+  const body = $('drBody');
+  if (!body.hidden) {
+    body.hidden = true;
+    return;
+  }
+  const res = await refreshDailyReportSummary();
+  if (!res?.report) {
+    $('drMsg').textContent = '无法读取日报';
+    return;
+  }
+  body.innerHTML = renderDailyReportHtml(res.report);
+  body.hidden = false;
+  $('drMsg').textContent = res.source === 'snapshot' ? `正式日报（${res.generatedAt ?? ''}）` : '实时预览（正式日报将在 18:00 生成）';
+}
+
+async function exportDailyReportMarkdown() {
+  const res = await refreshDailyReportSummary();
+  if (!res?.report) {
+    $('drMsg').textContent = '无法读取日报，导出取消';
+    return;
+  }
+  const md = renderDailyReportMarkdown(res.report);
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const filename = `job-agent-report-${res.date}.md`;
+  try {
+    await chrome.downloads.download({ url: URL.createObjectURL(blob), filename });
+    $('drMsg').textContent = `已导出 ${filename}`;
+  } catch (e) {
+    $('drMsg').textContent = `导出失败：${e?.message ?? e}`;
+  }
+}
+
+function bindDailyReport() {
+  $('drViewBtn').onclick = () => {
+    toggleDailyReportView().catch((e) => {
+      $('drMsg').textContent = `读取失败：${e?.message ?? e}`;
+    });
+  };
+  $('drExportBtn').onclick = () => {
+    exportDailyReportMarkdown().catch((e) => {
+      $('drMsg').textContent = `导出失败：${e?.message ?? e}`;
+    });
+  };
+}
+
 // ---------------- Phase 2：持久化状态面板（Side Panel 只是展示，storage 才是事实来源） ----------------
 export async function renderAgentStatePanel() {
   const el = $('agentStateBody');
@@ -1066,7 +1257,7 @@ function readSettingsForm() {
     monitorIntervalMinutes: Number($('setMonitorInterval').value),
     dailyReportEnabled: $('setDailyReport').checked,
     dailyReportTime: $('setReportTime').value.trim(),
-    emailReportEnabled: $('setEmailReport').checked,
+    emailReportEnabled: false, // SMTP 尚未实现（Phase 4B），保持关闭而不是让用户以为已生效
     autoSendResume: false,
   };
 }
@@ -1466,7 +1657,12 @@ async function init() {
   await renderAgentStatePanel();
   bindAutopilotDashboard();
   bindAutopilotStorageWatcher();
+  bindDailyReport();
   await refreshAutopilotStatus();
+  await refreshDailyReportSummary();
+  // Side Panel 打开也是 catch-up 的合适时机：只有"已过 18:00 且今天还没生成"才会写正式日报
+  await sendAutopilotCommand('CATCH_UP_DAILY_REPORT').catch(() => {});
+  await refreshDailyReportSummary();
 }
 
 init();

@@ -138,3 +138,17 @@ input[type="number"] { width: 70px; }
 
 /* ===== V0.5 Phase 3：Autopilot 专属面板（仅 Autopilot 模式显示） ===== */
 #autopilotPanels[hidden] { display: none !important; }
+
+/* ===== V0.5 Phase 4：每日求职日报 ===== */
+.report-body { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 8px; background: #fbfcfe; }
+.report-body h3 { margin: 10px 0 4px; font-size: 13px; }
+.report-body h3:first-child { margin-top: 0; }
+.report-body table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.report-body td, .report-body th { padding: 2px 4px; border-bottom: 1px solid var(--border); text-align: left; }
+.report-body td.num, .report-body th.num { text-align: right; }
+.report-round { border-left: 3px solid var(--primary); padding-left: 8px; margin: 6px 0; }
+.report-line { padding: 1px 0; }
+.report-goal-ok { color: var(--ok); font-weight: 600; }
+.report-goal-no { color: var(--warn); font-weight: 600; }
+.report-muted { color: var(--muted); }
+.report-issue { color: var(--bad); }
