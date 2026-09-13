@@ -31,8 +31,8 @@ describe('Manifest：本阶段只新增真正需要的权限（V0.5 §2 / §42�
     expect(manifest.background).toMatchObject({ service_worker: 'background.js', type: 'module' });
   });
 
-  it('manifest 版本仍是 0.4.1（版本号在 Phase 9 统一收敛）', () => {
-    expect(manifest.version).toBe('0.4.1');
+  it('manifest 版本为 0.5.0（V0.5 正式发布）', () => {
+    expect(manifest.version).toBe('0.5.0');
   });
 
   it('content script 仍只注入 BOSS 域名，且未新增其它脚本', () => {

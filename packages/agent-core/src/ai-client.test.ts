@@ -135,10 +135,10 @@ describe('normalizeScoreResponse / pickErrorMessage', () => {
 
 describe('/health 与 /config', () => {
   it('/health → ok + version', async () => {
-    stubFetch({ '/health': { body: { ok: true, version: '0.4.1' } } });
+    stubFetch({ '/health': { body: { ok: true, version: '0.5.0' } } });
     const res = await checkHealth();
     expect(res.ok).toBe(true);
-    expect(res.version).toBe('0.4.1');
+    expect(res.version).toBe('0.5.0');
   });
 
   it('/health 非 200 → 失败并提示 AI 服务异常', async () => {

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "BOSS 自动投递助手",
-  "version": "0.4.1",
-  "description": "在你已登录的 BOSS 网页里自动搜索/筛选/打招呼（低限额、可暂停）。个人求职助手，风险自担。",
+  "version": "0.5.0",
+  "description": "在你的 BOSS 页面里自动搜索/筛选/打分/打招呼，并生成每日求职执行日报（双模式、可暂停、有日限）。个人求职助手，风险自担。",
   "permissions": [
     "downloads",
     "tabs",
