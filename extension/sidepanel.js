@@ -140,16 +140,29 @@ async function getCurrentBossContext() {
   let ctx = null;
   try {
     const tabs = await chrome.tabs.query({ url: ['https://*.zhipin.com/*'] });
-    const tab = tabs.find((t) => /\/web\/geek\//.test(t.url)) ?? tabs[0];
-    if (tab) {
-      const page = await chrome.tabs.sendMessage(tab.id, { type: 'bossContext' });
-      ctx = resolveBossContext(page);
+    // 优先当前激活的 BOSS 标签（用户刚切完城市的那一个），其次岗位列表页
+    const ordered = [
+      ...tabs.filter((t) => t.active),
+      ...tabs.filter((t) => /\/web\/geek\//.test(t.url)),
+      ...tabs,
+    ].filter((t, i, arr) => arr.findIndex((x) => x.id === t.id) === i);
+    for (const tab of ordered) {
+      try {
+        const page = await chrome.tabs.sendMessage(tab.id, { type: 'bossContext' });
+        const parsed = resolveBossContext(page);
+        if (parsed) {
+          ctx = parsed;
+          break;
+        }
+      } catch { /* 该标签 content script 未就绪，试下一个 */ }
     }
   } catch { /* 页面未就绪 */ }
   if (ctx) {
     session.bossContext = ctx;
     badge.textContent = `📍 当前城市：${ctx.cityName}`;
     badge.className = 'badge badge-ok';
+    badge.title = `code=${ctx.cityCode || '未知'} · 页面=${ctx.pageType} · ${ctx.url}`;
+    session.bossContext = ctx;
   } else {
     session.bossContext = null;
     badge.textContent = '📍 当前城市：未识别';
@@ -685,8 +698,32 @@ function bind() {
   };
 }
 
+let refreshTimer = null;
+function scheduleContextRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    getCurrentBossContext().catch(() => {});
+  }, 700);
+}
+
+function bindContextWatchers() {
+  try {
+    chrome.tabs.onActivated.addListener(scheduleContextRefresh);
+    chrome.tabs.onUpdated.addListener((_id, info, tab) => {
+      if (!tab?.url?.includes('zhipin.com')) return;
+      if (info.url || info.status === 'complete') scheduleContextRefresh();
+    });
+    chrome.windows?.onFocusChanged?.addListener(scheduleContextRefresh);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) scheduleContextRefresh();
+    });
+  } catch { /* 某些上下文可能不支持，忽略 */ }
+}
+
 async function init() {
   bind();
+  bindContextWatchers();
   await Promise.all([checkBoss(), checkAi()]);
   await getCurrentBossContext();
   const st = await chrome.storage.local.get('dailyCap');
@@ -697,4 +734,4 @@ async function init() {
 
 init();
 
-export { AI_BASE, todayKey, checkBoss, checkAi, getCurrentBossContext, findBossTab, gotoSearch, fetchDetail };
+export { AI_BASE, todayKey, checkBoss, checkAi, getCurrentBossContext, scheduleContextRefresh, findBossTab, gotoSearch, fetchDetail };
