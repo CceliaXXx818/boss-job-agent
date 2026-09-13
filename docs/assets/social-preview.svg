@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0e19"/>
+      <stop offset="100%" stop-color="#221b3f"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect x="70" y="70" width="1140" height="500" rx="34" fill="#12182a" stroke="#4b556f" stroke-width="2"/>
+  <rect x="85" y="85" width="1110" height="470" rx="28" fill="none" stroke="#7c3aed" stroke-width="3"/>
+  <rect x="105" y="115" width="205" height="44" rx="22" fill="url(#accent)"/>
+  <text x="207" y="144" text-anchor="middle" fill="#ffffff" font-size="22" font-family="Arial, Helvetica, sans-serif" font-weight="700">JOB AUTOPILOT</text>
+  <text x="105" y="248" fill="#f8fafc" font-size="74" font-family="Arial, Helvetica, sans-serif" font-weight="800">BOSS Job Agent</text>
+  <text x="108" y="305" fill="#cbd5e1" font-size="31" font-family="Arial, Helvetica, sans-serif">Goal-driven AI Job Agent for BOSS Zhipin</text>
+  <text x="108" y="392" fill="#e2e8f0" font-size="29" font-family="Arial, Helvetica, sans-serif" font-weight="700">Goal  →  Plan  →  Search  →  Score  →  Replan  →  Outreach  →  Daily Report</text>
+  <text x="108" y="470" fill="#a8b3cf" font-size="23" font-family="Arial, Helvetica, sans-serif">Review Mode + Autopilot Mode · Bounded by Policy, Daily Cap & Working Hours</text>
+  <text x="108" y="515" fill="#7dd3fc" font-size="23" font-family="Arial, Helvetica, sans-serif">github.com/CceliaXXx818/boss-job-agent</text>
+</svg>
