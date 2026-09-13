@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { ModelClient } from './client';
 import {
-  SUPPORTED_CITIES,
   MAX_INITIAL_QUERIES,
   MAX_REPLAN_QUERIES,
   DEFAULT_TARGET_QUALIFIED_JOBS,
@@ -57,9 +56,6 @@ export const plannerSchema = z.object({
 export type PlannerOutput = z.infer<typeof plannerSchema>;
 
 export function buildPlannerSystem(): string {
-  const supported = Object.entries(SUPPORTED_CITIES)
-    .map(([name, code]) => `${name}=${code}`)
-    .join('、');
   return [
     '你是求职搜索规划器。从用户的一句话目标中提取结构化搜索计划，只输出 JSON。',
     '',
@@ -74,7 +70,7 @@ export function buildPlannerSystem(): string {
     '- keywords：搜索关键词，3~6 个，优先高召回（例：AI产品经理、Agent产品经理、大模型产品经理）',
     '',
     '【硬性规则】',
-    `- 目前只支持这些城市：${supported}；若用户提到其他城市，仍写入 name，但不要编造 code`,
+    '- 城市由浏览器上下文决定：不要输出 cityCode；若用户在目标中明确提到城市，只把城市名写入 cities[].name（用于冲突提示）',
     '- 禁止修改、放宽或删除用户给出的硬约束（薪资/排除项/上限）',
     '- 不要生成大量长尾关键词；keywords 最多 6 个',
     '- 只输出 JSON，结构：{"cities":[{"name":""}],"targetTitles":[],"preferredSkills":[],"excludeTokens":[],"salaryMinK":null,"targetQualifiedJobs":10,"dailyGreetingCap":5,"keywords":[]}',
@@ -85,24 +81,32 @@ export function buildPlannerUser(rawGoal: string): string {
   return `用户目标：${rawGoal}\n请输出唯一 JSON。`;
 }
 
-/** 纯函数：把 Planner 输出规范化为 Plan（城市校验、关键词截断、查询组合生成） */
+/**
+ * 纯函数：把 Planner 输出规范化为 Plan。
+ * V0.4.1：城市来自 Browser Context（当前 BOSS 页面），Planner 不再提供 cityCode；
+ * 若用户 Goal 提到的城市与当前上下文不一致，返回 conflict 由调用方停止并提示用户。
+ */
+export interface BrowserContext {
+  cityName: string;
+  cityCode: string;
+}
+
 export function normalizePlan(
   raw: PlannerOutput,
   rawGoal: string,
-): { goal: JobSearchGoal; queries: SearchQuery[]; warnings: string[] } {
+  context: BrowserContext,
+): { goal: JobSearchGoal; queries: SearchQuery[]; warnings: string[]; mentionedCities: string[] } {
   const warnings: string[] = [];
-  const cities: CityRef[] = [];
-  for (const c of raw.cities ?? []) {
-    const name = String(c?.name ?? '').trim();
-    if (!name) continue;
-    const code = (SUPPORTED_CITIES as Record<string, string>)[name];
-    if (!code) {
-      warnings.push(`暂不支持的城市：${name}（已跳过，未猜测 city code）`);
-      continue;
-    }
-    if (!cities.some((x) => x.code === code)) cities.push({ name, code });
+  const mentionedCities = (raw.cities ?? [])
+    .map((c) => String(c?.name ?? '').trim().replace(/市$/, ''))
+    .filter(Boolean);
+  const contextCity = String(context.cityName ?? '').trim().replace(/市$/, '');
+  const others = mentionedCities.filter((c) => c && c !== contextCity);
+  if (others.length) {
+    warnings.push(
+      `当前 BOSS 城市为${contextCity}，但你的求职目标中提到了${others.join('、')}。请先将 BOSS 切换到${others[0]}后重新开始。`,
+    );
   }
-  if (cities.length === 0) warnings.push('没有可用的支持城市，搜索计划为空。');
 
   const keywords: string[] = [];
   for (const k of raw.keywords ?? []) {
@@ -112,7 +116,7 @@ export function normalizePlan(
 
   const goal: JobSearchGoal = {
     rawGoal,
-    cities,
+    cities: [{ name: contextCity, code: context.cityCode }],
     targetTitles: raw.targetTitles ?? [],
     preferredSkills: raw.preferredSkills ?? [],
     excludeTokens: raw.excludeTokens ?? [],
@@ -121,30 +125,35 @@ export function normalizePlan(
     dailyGreetingCap: raw.dailyGreetingCap ?? 5,
   };
 
-  // 初始查询：按关键词外层、城市内层展开，总数限制在 MAX_INITIAL_QUERIES
+  // 搜索任务：全部继承 Browser Context 城市；关键词数量受限
   const queries: SearchQuery[] = [];
   for (const keyword of keywords) {
-    for (const city of cities) {
-      if (queries.length >= MAX_INITIAL_QUERIES) break;
-      queries.push({ cityName: city.name, cityCode: city.code, keyword, source: 'initial' });
-    }
     if (queries.length >= MAX_INITIAL_QUERIES) break;
+    queries.push({ cityName: contextCity, cityCode: context.cityCode, keyword, source: 'initial' });
   }
 
-  return { goal, queries, warnings };
+  return { goal, queries, warnings, mentionedCities };
 }
 
 /** 调用模型生成 Plan（唯一入口） */
 export async function planJobSearch(
   client: ModelClient,
   rawGoal: string,
-): Promise<{ goal: JobSearchGoal; queries: SearchQuery[]; warnings: string[]; successCriteria: AgentPlan['successCriteria'] }> {
+  context: BrowserContext,
+): Promise<{
+  goal: JobSearchGoal;
+  queries: SearchQuery[];
+  warnings: string[];
+  mentionedCities: string[];
+  successCriteria: AgentPlan['successCriteria'];
+}> {
   const raw = (await client.chatJson(plannerSchema, buildPlannerSystem(), buildPlannerUser(rawGoal))) as PlannerOutput;
-  const { goal, queries, warnings } = normalizePlan(raw, rawGoal);
+  const { goal, queries, warnings, mentionedCities } = normalizePlan(raw, rawGoal, context);
   return {
     goal,
     queries,
     warnings,
+    mentionedCities,
     successCriteria: {
       targetQualifiedJobs: goal.targetQualifiedJobs,
       qualifiedScoreThreshold: DEFAULT_QUALIFIED_SCORE_THRESHOLD,

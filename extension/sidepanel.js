@@ -207,11 +207,19 @@ export async function runAgent(rawGoal) {
     const planRes = await fetch(`${AI_BASE}/plan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ goal: rawGoal }),
+      body: JSON.stringify({ goal: rawGoal, context: { cityName: bossContext.cityName, cityCode: bossContext.cityCode } }),
       signal: AbortSignal.timeout(60000),
     }).then((r) => r.json());
     if (!planRes?.ok) throw new Error(friendlyError(`规划失败：${planRes?.error ?? 'AI 服务未就绪（请先 npm run score:serve）'}`));
-    const { goal, queries, warnings, successCriteria } = planRes.plan;
+    const { goal, queries, warnings, successCriteria, mentionedCities } = planRes.plan;
+    // Case C：Goal 提到的城市与当前 BOSS 城市冲突 → 不自动切城市，直接停下并提示
+    const conflict = detectCityConflict(mentionedCities, bossContext.cityName);
+    if (conflict.conflict) {
+      throw new Error(
+        `当前 BOSS 城市为${bossContext.cityName}，但你的求职目标中提到了${conflict.others.join('、')}。` +
+          `请先将 BOSS 切换到${conflict.others[0]}后重新开始。`,
+      );
+    }
     session.goal = goal;
     session.plan = { goal, queries, successCriteria };
     session.warnings = warnings ?? [];

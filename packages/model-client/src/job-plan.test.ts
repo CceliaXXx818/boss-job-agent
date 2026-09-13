@@ -22,6 +22,7 @@ import {
 
 const ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const PLAN_VCR = join(ROOT, 'fixtures', 'vcr', 'plan.json');
+const CTX = { cityName: '上海', cityCode: '101020100' };
 const REPLAN_VCR = join(ROOT, 'fixtures', 'vcr', 'replan.json');
 const ACCEPTANCE_GOAL = '杭州和深圳AI产品经理，优先Agent和LLM方向，30K以上，不要外包、售前、纯运营';
 
@@ -41,7 +42,7 @@ const liveProduce = isLiveMode();
 
 describe('V0.4 Planner · normalizePlan（纯函数）', () => {
   const base: PlannerOutput = {
-    cities: [{ name: '杭州' }, { name: '深圳' }],
+    cities: [{ name: '上海' }], // 与 Browser Context 一致 → 无冲突 warning
     targetTitles: ['AI产品经理'],
     preferredSkills: ['Agent', 'LLM'],
     excludeTokens: ['外包', '售前', '纯运营'],
@@ -51,22 +52,30 @@ describe('V0.4 Planner · normalizePlan（纯函数）', () => {
     keywords: ['AI产品经理', 'Agent产品经理'],
   };
 
-  it('支持城市正确映射 code，初始查询为 city×keyword 组合且 source=initial', () => {
-    const { goal, queries, warnings } = normalizePlan(base, 'g');
+  it('城市来自 Browser Context；初始查询全部继承当前城市且 source=initial', () => {
+    const { goal, queries, warnings } = normalizePlan(base, 'g', CTX);
     expect(warnings).toEqual([]);
-    expect(goal.cities).toEqual([
-      { name: '杭州', code: SUPPORTED_CITIES['杭州'] },
-      { name: '深圳', code: SUPPORTED_CITIES['深圳'] },
-    ]);
-    expect(queries).toHaveLength(4); // 2 城市 × 2 关键词
+    expect(goal.cities).toEqual([{ name: '上海', code: '101020100' }]);
+    expect(queries).toHaveLength(2); // 1 城市 × 2 关键词
     expect(queries.every((q) => q.source === 'initial')).toBe(true);
-    expect(new Set(queries.map((q) => `${q.cityCode}::${q.keyword}`)).size).toBe(4);
+    expect(queries.every((q) => q.cityCode === '101020100' && q.cityName === '上海')).toBe(true);
   });
 
-  it('不支持的城市：给 warning 而不是猜 code', () => {
-    const { goal, warnings } = normalizePlan({ ...base, cities: [{ name: '纽约' }] }, 'g');
-    expect(warnings.join('|')).toContain('纽约');
-    expect(goal.cities).toEqual([]);
+  it('Goal 提到的城市与当前 BOSS 城市冲突 → warning（不自动切城市）', () => {
+    const { goal, warnings, mentionedCities } = normalizePlan(
+      { ...base, cities: [{ name: '杭州' }] },
+      '杭州AI产品经理',
+      CTX,
+    );
+    expect(mentionedCities).toContain('杭州');
+    expect(warnings.join('|')).toContain('当前 BOSS 城市为上海');
+    expect(warnings.join('|')).toContain('杭州');
+    expect(goal.cities).toEqual([{ name: '上海', code: '101020100' }]); // 城市不变
+  });
+
+  it('Goal 未提城市 → 无冲突 warning', () => {
+    const { warnings } = normalizePlan({ ...base, cities: [] }, 'AI产品经理', CTX);
+    expect(warnings).toEqual([]);
   });
 
   it('初始查询总数不超过 MAX_INITIAL_QUERIES（模型给再多关键词也一样）', () => {
@@ -74,7 +83,7 @@ describe('V0.4 Planner · normalizePlan（纯函数）', () => {
       ...base,
       keywords: ['AI产品经理', 'Agent产品经理', '大模型产品经理', '智能客服产品经理', 'AI平台产品经理', '对话AI产品经理'],
     };
-    const { queries } = normalizePlan(many, 'g');
+    const { queries } = normalizePlan(many, 'g', CTX);
     expect(queries.length).toBeLessThanOrEqual(MAX_INITIAL_QUERIES);
   });
 
@@ -131,12 +140,11 @@ describe('V0.4 Planner · 真模型解析自然语言目标', () => {
         file: PLAN_VCR,
         id: 'plan-acceptance',
         live: liveProduce,
-        produce: () => planJobSearch(client, ACCEPTANCE_GOAL),
+        produce: () => planJobSearch(client, ACCEPTANCE_GOAL, CTX),
       });
-      // 城市
-      const names = plan.goal.cities.map((c) => c.name).sort();
-      expect(names).toEqual(['杭州', '深圳']);
-      expect(plan.goal.cities.every((c) => c.code === (SUPPORTED_CITIES as Record<string, string>)[c.name])).toBe(true);
+      // 城市：来自 Browser Context（当前页面），不由 Planner 决定
+      expect(plan.goal.cities).toEqual([{ name: '上海', code: '101020100' }]);
+      expect(plan.queries.every((q) => q.cityCode === '101020100')).toBe(true);
       // 薪资与排除项（硬约束原样提取，不能被放宽）
       expect(plan.goal.salaryMinK).toBe(30);
       const ex = plan.goal.excludeTokens.join('|');

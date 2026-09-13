@@ -79,13 +79,23 @@ const server = createServer(async (req, res) => {
     try {
       const chunks: Buffer[] = [];
       for await (const c of req) chunks.push(c as Buffer);
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { goal?: string };
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+        goal?: string;
+        context?: { cityName?: string; cityCode?: string };
+      };
       if (!body.goal || !body.goal.trim()) {
         res.writeHead(400).end(JSON.stringify({ ok: false, error: 'goal 不能为空' }));
         return;
       }
+      if (!body.context?.cityName || !body.context?.cityCode) {
+        res.writeHead(400).end(JSON.stringify({ ok: false, error: '缺少 Browser Context（cityName/cityCode）' }));
+        return;
+      }
       const client = new ModelClient();
-      const plan = await planJobSearch(client, body.goal);
+      const plan = await planJobSearch(client, body.goal, {
+        cityName: body.context.cityName,
+        cityCode: body.context.cityCode,
+      });
       res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, plan }));
     } catch (e) {
       res.writeHead(500).end(JSON.stringify({ ok: false, error: (e as Error).message }));
