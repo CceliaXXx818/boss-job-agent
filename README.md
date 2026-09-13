@@ -177,6 +177,21 @@ Replan 终止条件（Eligible vs Target）、评分分批与续评、工作时�
 
 ---
 
+## 文档地图（想学架构从这里进）
+
+| 文档 | 内容 |
+|---|---|
+| [`docs/AGENT-ARCHITECTURE.md`](docs/AGENT-ARCHITECTURE.md) | **用到了哪些 Agent 架构模式**、为什么这么选、没用哪些、7 步学习路线 |
+| [`docs/PRD-v0.5.md`](docs/PRD-v0.5.md) | 完整需求（功能需求编号化 + 验收标准 + 非目标 + 后续路线） |
+| [`docs/DESIGN-v0.5.md`](docs/DESIGN-v0.5.md) | 完整设计（模块地图、11 个 step、事件目录、状态机、幂等、调度、测试、扩展点） |
+| [`docs/INDEX.md`](docs/INDEX.md) | 文档地图与阅读顺序（含历史文档标注） |
+| [`CHANGELOG.md`](CHANGELOG.md) | 每个版本的变化与修复背后的真实事故 |
+
+> ⚠️ `docs/` 里的 `PRD.md` / `ARCHITECTURE.md` / `DATA_MODEL.md` / `TOOL_SPEC.md` / `IMPLEMENTATION_PLAN.md`
+> 是项目**最早的设计稿（V0.1，SQLite + 平台适配器路线，未按此实现）**，已在文件顶部标注；看当前实现请用上面这套。
+
+---
+
 ## 旧入口（Legacy）
 
 `extension/auto.html` 保留为 V0.3 的调试台；Side Panel 是主入口，popup 作为轻量启动器。

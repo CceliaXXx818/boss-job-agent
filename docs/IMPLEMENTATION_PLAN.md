@@ -1,5 +1,7 @@
 # 自动求职投递 Agent — 实施计划与测试策略（IMPLEMENTATION_PLAN.md）
 
+> ⚠️ **历史文档（V0.1 规划）**：阶段划分思路仍可参考，实际按 Phase 1–4A 推进，进度与验收见 [`PRD-v0.5.md`](PRD-v0.5.md) 与 [`../CHANGELOG.md`](../CHANGELOG.md)。
+
 > 状态：规划稿 v0.1，等待确认；**尚未编写任何业务代码**
 > 关联：docs/PRD.md / USER_PROFILE.md / ARCHITECTURE.md / DATA_MODEL.md / TOOL_SPEC.md
 > 本文档是工程执行的唯一路线图：阶段拆分、测试策略（Mock 平台与测试数据）、每阶段运行方法与验收证据、以及"仍需你决定的问题"权威清单（附录 A）。

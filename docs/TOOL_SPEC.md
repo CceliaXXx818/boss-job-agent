@@ -1,5 +1,8 @@
 # 自动求职投递 Agent — DeepSeek Harness 工具清单与 Schema（TOOL_SPEC.md）
 
+> ⚠️ **历史文档（V0.1 规划）**：这些工具**没有**作为 DSH 工具暴露。
+> 对应能力现在由 `extension/content.js`（确定性页面动作）与 `extension/*` 内的模块承载，见 [`DESIGN-v0.5.md`](DESIGN-v0.5.md) §3。
+
 > 状态：规划稿 v0.1，等待确认
 > 关联：docs/ARCHITECTURE.md（§4 数据流、§6.2 Harness 集成面）、docs/DATA_MODEL.md（字段与枚举唯一来源）
 > 本文档定义 Agent（模型）可调用的**全部工具**的输入/输出 Schema、副作用等级、护栏与裁决矩阵。

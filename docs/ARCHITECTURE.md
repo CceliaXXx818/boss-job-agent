@@ -1,5 +1,8 @@
 # 自动求职投递 Agent — 总体架构设计（ARCHITECTURE.md）
 
+> ⚠️ **历史文档（V0.1 规划）**：本文件描述的平台适配器 / 决策回路架构**未按此实现**（实际为 Chrome 扩展 + 本机 AI 服务）。
+> 当前设计见 [`DESIGN-v0.5.md`](DESIGN-v0.5.md)，架构模式解读见 [`AGENT-ARCHITECTURE.md`](AGENT-ARCHITECTURE.md)。
+
 > 状态：规划稿 v0.1，等待确认，尚未实现任何业务代码
 > 输入文档：docs/PRD.md、docs/USER_PROFILE.md
 > 关联文档：docs/DATA_MODEL.md、docs/TOOL_SPEC.md、docs/IMPLEMENTATION_PLAN.md

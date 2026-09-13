@@ -1,5 +1,8 @@
 # 自动求职投递 Agent — 数据模型设计（DATA_MODEL.md）
 
+> ⚠️ **历史文档（V0.1 规划）**：这里定义的是 SQLite 表结构；当前实现使用 `chrome.storage.local`（事件按日分区 + 派生状态）。
+> 语义相近的部分（岗位状态枚举、幂等键规范、保留策略）仍被继承；当前存储设计见 [`DESIGN-v0.5.md`](DESIGN-v0.5.md) §6。
+
 > 状态：规划稿 v0.1，等待确认
 > 关联：docs/PRD.md（第七节状态机/字段清单）、docs/ARCHITECTURE.md（§4 数据流、§5 适配器）、docs/TOOL_SPEC.md（工具引用本模型字段）
 > 本文件定义：实体、枚举、状态机、约束、幂等键、索引与保留策略。实现（SQLite DDL + Zod 类型）在 IMPLEMENTATION_PLAN.md Phase 1 落地。
