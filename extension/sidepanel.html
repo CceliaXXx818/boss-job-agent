@@ -79,6 +79,32 @@
     <div id="policyPreviewResult" class="muted small"></div>
   </details>
 
+  <!-- ===== Autopilot Dashboard（V0.5 Phase 3） ===== -->
+  <details class="activity" id="autopilotDashboard" open>
+    <summary>Autopilot</summary>
+    <div id="apStatusLine" class="small">尚未启动。</div>
+    <ul class="kv">
+      <li><span>状态</span><b id="apStatus">IDLE</b></li>
+      <li><span>今日已联系</span><b id="apToday">0 / 5</b></li>
+      <li><span>Discovery 轮次</span><b id="apRound">0 / 3</b></li>
+      <li><span>当前搜索词</span><b id="apQuery">—</b></li>
+      <li><span>推荐候选</span><b id="apRecommended">0</b></li>
+      <li><span>Action Queue</span><b id="apQueue">—</b></li>
+      <li><span>最近一步</span><b id="apStep">—</b></li>
+    </ul>
+    <div class="row">
+      <button id="apStart" class="btn-primary">Start Autopilot</button>
+      <button id="apPause" class="btn-secondary">Pause</button>
+      <button id="apResume" class="btn-secondary">Resume</button>
+      <button id="apStop" class="btn-secondary">Stop</button>
+    </div>
+    <div id="apMessage" class="box" hidden></div>
+    <details class="activity">
+      <summary>Autopilot Activity</summary>
+      <div id="apLog" class="muted small">—</div>
+    </details>
+  </details>
+
   <details class="activity" id="agentStateBox">
     <summary>运行状态（持久化：Action Queue / 岗位状态 / 事件）</summary>
     <p class="muted small">这些数据存在 chrome.storage，关掉 Side Panel 再打开依然存在。</p>

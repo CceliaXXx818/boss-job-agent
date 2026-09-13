@@ -444,8 +444,24 @@ function bossContext() {
   };
 }
 
+/**
+ * pageHealth —— V0.5 Phase 3：给 Background 用的"页面健康"信号。
+ * 只返回 URL / 标题 / 卡片数量这类事实，不做任何 selector 猜测：
+ * 风险判定（验证码 / 登录失效 / 城市页）由 background.js 依据这些事实决定。
+ */
+function pageHealth() {
+  return {
+    url: location.href,
+    title: document.title,
+    readyState: document.readyState,
+    cardCount: pick(() => cardRows().length, 0),
+  };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === 'scrape') {
+  if (msg?.type === 'pageHealth') {
+    sendResponse({ ok: true, ...pageHealth() });
+  } else if (msg?.type === 'scrape') {
     const rows = cardRows();
     sendResponse({ ok: true, url: location.href, count: rows.length, rows });
   } else if (msg?.type === 'greet') {

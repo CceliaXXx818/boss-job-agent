@@ -6,10 +6,6 @@ import {
   canGreet,
   mergeHardExclusions,
   hardFilter,
-  selectDetailTargets,
-  rankJobs,
-  shouldReplan,
-  applyReplanQueries,
   MAX_REPLAN,
   hhmm,
 } from './core-logic.js';
@@ -24,6 +20,25 @@ import {
   isWithinWorkingHours,
 } from './settings.js';
 import { buildGreetingMessage } from './greeting-builder.js';
+// ---- V0.5 Phase 3：与 Autopilot 共用的执行内核（AI 客户端 + Discovery 纯函数）----
+import {
+  AI_BASE,
+  AI_TIMEOUTS,
+  friendlyError,
+  checkHealth,
+  getConfig,
+  planSearch,
+  replanSearch,
+  scoreJobs,
+  buildScorePayload,
+  buildGoalContext,
+} from './ai-client.js';
+import {
+  buildResultSummary as buildResultSummaryCore,
+  buildSearchUrl,
+  pickDetailTargets,
+  strongMatches as strongMatchesCore,
+} from './discovery-runner.js';
 import { evaluateAutopilotGreeting } from './autopilot-policy.js';
 // ---- V0.5 Phase 2：持久化层（Event Store / Job State / Action Queue）----
 import { aggregateEvents, getEventMeta, localDateKey, pruneEvents } from './event-store.js';
@@ -41,6 +56,7 @@ import {
   recoverInterruptedActions,
   summarizeActions,
 } from './action-queue.js';
+import { RUNTIME_KEY } from './autopilot-runtime.js';
 import {
   getDailyGreetingCount,
   getGreetedHistory,
@@ -55,8 +71,7 @@ import {
   recordSettingsUpdated,
 } from './agent-records.js';
 
-const AI_BASE = 'http://127.0.0.1:8799';
-const AI_TIMEOUT = 3000;
+const AI_TIMEOUT = AI_TIMEOUTS.health;
 const DETAIL_LIMIT = 15;
 
 const $ = (id) => document.getElementById(id);
@@ -109,20 +124,8 @@ export function addActivity(step, text) {
   }
 }
 
-export function friendlyError(msg) {
-  const m = String(msg ?? '');
-  if (/402|Insufficient Balance|欠费|余额不足/i.test(m)) {
-    return 'DeepSeek 账户余额不足：请到 platform.deepseek.com 充值后重试（当前所有 AI 步骤都会失败）。';
-  }
-  if (/401|invalid_api_key|Unauthorized/i.test(m)) return 'API Key 无效或已过期：请检查 .env 中的 DEEPSEEK_API_KEY。';
-  if (/timeout|aborted|ETIMEDOUT/i.test(m)) return 'AI 服务响应超时：请确认 npm run score:serve 正在运行且网络正常。';
-  if (/Failed to fetch|ECONNREFUSED|NetworkError/i.test(m)) return '连不上本机 AI 服务：请先运行 npm run score:serve。';
-  return m;
-}
-
-function setDecision(text) {
-  $('decisionBox').textContent = text;
-}
+// friendlyError 由 ai-client.js 统一提供（Review 与 Autopilot 共用同一套文案）
+export { friendlyError } from './ai-client.js';
 
 export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -226,7 +229,7 @@ async function sendTab(tabId, payload) {
 }
 
 async function gotoSearch(tabId, query) {
-  const url = `https://www.zhipin.com/web/geek/jobs?query=${encodeURIComponent(query.keyword)}&city=${query.cityCode}`;
+  const url = buildSearchUrl(query);
   await chrome.tabs.update(tabId, { url });
   await sleep(3500);
   for (let i = 0; i < 15; i++) {
@@ -266,12 +269,7 @@ export async function runAgent(rawGoal) {
 
     // 1) Plan
     $('stateText').textContent = 'planning';
-    const planRes = await fetch(`${AI_BASE}/plan`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ goal: rawGoal, context: { cityName: bossContext.cityName, cityCode: bossContext.cityCode } }),
-      signal: AbortSignal.timeout(60000),
-    }).then((r) => r.json());
+    const planRes = await planSearch(rawGoal, { cityName: bossContext.cityName, cityCode: bossContext.cityCode });
     if (!planRes?.ok) throw new Error(friendlyError(`规划失败：${planRes?.error ?? 'AI 服务未就绪（请先 npm run score:serve）'}`));
     let { goal, queries, warnings, successCriteria, mentionedCities } = planRes.plan;
 
@@ -319,7 +317,7 @@ export async function runAgent(rawGoal) {
     // 2) 排除词 = 画像 + Goal（硬约束最高优先级）
     let candidateExclude = [];
     try {
-      const cfg = await fetch(`${AI_BASE}/config`, { signal: AbortSignal.timeout(AI_TIMEOUT) }).then((r) => r.json());
+      const cfg = await getConfig();
       candidateExclude = cfg?.candidate?.hardExclusions ?? cfg?.candidate?.excludeTokens ?? [];
     } catch { /* 服务不可用时仅用 Goal 排除项 */ }
     const hardExclusions = mergeHardExclusions(candidateExclude, goal.hardExclusions);
@@ -337,17 +335,12 @@ export async function runAgent(rawGoal) {
     if (!firstEval.enough && session.replanCount < MAX_REPLAN && !session.stopped) {
       $('stateText').textContent = 'replanning';
       addActivity('Replan', '正在评估是否需要补充搜索词');
-      const replanRes = await fetch(`${AI_BASE}/replan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          goal,
-          searchedQueries: session.searchedQueries,
-          resultSummary: buildResultSummary(),
-          replanCount: session.replanCount,
-        }),
-        signal: AbortSignal.timeout(90000),
-      }).then((r) => r.json());
+      const replanRes = await replanSearch({
+        goal,
+        searchedQueries: session.searchedQueries,
+        resultSummary: buildResultSummary(),
+        replanCount: session.replanCount,
+      });
       if (replanRes?.ok && replanRes.status === 'continue' && (replanRes.newQueries ?? []).length) {
         session.replanCount += 1;
         addActivity('Replan', `${replanRes.reason}｜新增：${replanRes.newQueries.map((q) => q.keyword).join('、')}`);
@@ -420,7 +413,7 @@ async function runRound(tab, queries, planBaseIndex) {
 
   // Detail（只抓 Top N 且未抓过的）
   $('stateText').textContent = 'fetching_details';
-  const targets = selectDetailTargets(qualified, session.fetchedDetailIds, DETAIL_LIMIT);
+  const targets = pickDetailTargets(qualified, [...session.fetchedDetailIds], DETAIL_LIMIT);
   if (!targets.length) {
     addActivity('Detail', '没有需要新抓详情的岗位');
     return;
@@ -452,32 +445,11 @@ async function runRound(tab, queries, planBaseIndex) {
   // Score（只对新增详情调用，避免重复花费）
   if (newlyFetched.length) {
     $('stateText').textContent = 'scoring';
-    const scoreRes = await fetch(`${AI_BASE}/score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jobs: newlyFetched.map((j) => ({
-          jobId: j.jobId,
-          title: j.title || j.name || '',
-          company: j.company || '',
-          area: j.area || '',
-          salaryAscii: j.asciiSalary || '',
-          expEdu: j.expEdu || [],
-          companyMeta: j.companyMeta || [],
-          descFull: j.descFull || '',
-        })),
-        salaryMinK: session.goal.salaryMinK ?? undefined,
-        goalContext: {
-          cities: session.goal.cities.map((c) => c.name),
-          salaryMinK: session.goal.salaryMinK,
-          hardExclusions: session.goal.hardExclusions,
-          softNegativePreferences: session.goal.softNegativePreferences,
-          targetTitles: session.goal.targetTitles,
-          preferredSkills: session.goal.preferredSkills,
-        },
-      }),
-      signal: AbortSignal.timeout(180000),
-    }).then((r) => r.json());
+    const scoreRes = await scoreJobs({
+      jobs: newlyFetched.map((j) => buildScorePayload(j)),
+      salaryMinK: session.goal.salaryMinK ?? undefined,
+      goalContext: buildGoalContext(session.goal),
+    });
     const byId = new Map((scoreRes?.results ?? []).map((r) => [r.jobId, r]));
     for (const j of newlyFetched) {
       const ai = byId.get(j.jobId);
@@ -495,17 +467,18 @@ async function runRound(tab, queries, planBaseIndex) {
 }
 
 function strongMatches() {
-  return session.scoredJobs.filter((j) => j.__ai?.ok && j.__ai.score >= 75);
+  return strongMatchesCore(session.scoredJobs);
 }
 
 function buildResultSummary() {
-  return {
+  // 与 Autopilot 共用同一口径（discovery-runner.buildResultSummary）
+  return buildResultSummaryCore({
     discoveredCount: session.discoveredJobs.length,
     qualifiedCount: session.qualifiedJobs.length,
     strongMatchCount: strongMatches().length,
     topTitles: session.qualifiedJobs.map((j) => j.title).slice(0, 8),
-    rejectedReasons: [`命中排除词后累计移除 ${session.filteredOut} 个`],
-  };
+    filteredOut: session.filteredOut,
+  });
 }
 
 function evaluate({ afterReplan = false } = {}) {
@@ -781,6 +754,137 @@ async function executeStagedActions() {
   await renderAgentStatePanel();
 }
 
+// ---------------- Phase 3：Autopilot Dashboard（Side Panel 只发命令 + 展示） ----------------
+// 关键原则：Side Panel 不参与执行。关掉它 Autopilot 依然由 Background 推进。
+
+export async function sendAutopilotCommand(type, extra = {}) {
+  try {
+    const res = await chrome.runtime.sendMessage({ type, ...extra });
+    return res ?? { ok: false, reason: 'Background 未响应（请重新加载扩展）' };
+  } catch (e) {
+    return { ok: false, reason: `无法连接 Background：${e?.message ?? e}（请在 chrome://extensions 重新加载扩展）` };
+  }
+}
+
+function apShowMessage(text, kind = 'info') {
+  const el = $('apMessage');
+  if (!text) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.className = kind === 'error' ? 'box box-error' : kind === 'warn' ? 'box box-warn' : 'box';
+  el.textContent = text;
+}
+
+export async function refreshAutopilotStatus() {
+  const res = await sendAutopilotCommand('GET_AUTOPILOT_STATUS');
+  const el = $('apStatus');
+  if (!el) return res;
+  if (!res?.ok) {
+    el.textContent = '—';
+    apShowMessage(res?.reason ?? '无法读取 Autopilot 状态', 'error');
+    return res;
+  }
+
+  el.textContent = res.status ?? 'IDLE';
+  $('apToday').textContent = `${res.todayGreetingCount ?? 0} / ${res.dailyGreetingCap ?? 5}`;
+  $('apRound').textContent = `${res.roundIndex ?? 0} / ${res.maxDiscoveryRounds ?? 3}`;
+  $('apQuery').textContent = res.currentQuery ?? '—';
+  $('apRecommended').textContent = String(res.recommended ?? 0);
+  const q = res.queue ?? {};
+  $('apQueue').textContent = `pending ${q.pending ?? 0} / executing ${q.executing ?? 0} / success ${q.success ?? 0}`;
+  $('apStep').textContent = res.step && res.step !== 'NONE' ? res.step : '—';
+
+  if (res.status === 'MONITORING' || res.status === 'OUTREACH_COMPLETE') {
+    $('apStatusLine').textContent = `Outreach complete（今日已联系 ${res.todayGreetingCount ?? 0} / ${res.dailyGreetingCap ?? 5}）。HR 回复监测将在下一阶段启用。`;
+  } else if (res.status === 'PAUSED' || res.status === 'ERROR') {
+    $('apStatusLine').textContent = `已暂停：${res.pauseReason ?? res.lastError ?? '需要人工处理'}`;
+  } else if (res.status === 'IDLE' || res.status === 'STOPPED') {
+    $('apStatusLine').textContent = res.startedAt
+      ? `本次 Session 已停止（今日已联系 ${res.todayGreetingCount ?? 0} / ${res.dailyGreetingCap ?? 5}）。`
+      : '尚未启动。切换模式到 Autopilot 并完成授权后，点击 Start Autopilot。';
+  } else {
+    $('apStatusLine').textContent = `运行中（第 ${res.roundIndex ?? 1} / ${res.maxDiscoveryRounds ?? 3} 轮）${
+      res.cityConflictWarning ? `｜${res.cityConflictWarning}` : ''
+    }`;
+  }
+
+  const log = res.log ?? [];
+  $('apLog').innerHTML = log.length
+    ? log
+        .slice()
+        .reverse()
+        .map((l) => `<div class="state-line">${escapeHtml(String(l.at).slice(11, 19))} ${escapeHtml(l.text)}</div>`)
+        .join('')
+    : '<span class="muted">（暂无）</span>';
+
+  if (res.pauseReason) apShowMessage(`已暂停：${res.pauseReason}｜处理完成后点 Resume`, 'warn');
+  else if (res.status === 'MONITORING') apShowMessage(null);
+  return res;
+}
+
+function bindAutopilotDashboard() {
+  $('apStart').onclick = async () => {
+    const goal = $('goalInput').value.trim();
+    if (!goal) {
+      apShowMessage('请先在上方"求职目标"里填写目标，再点 Start Autopilot。', 'error');
+      return;
+    }
+    if (session.settings?.mode !== 'autopilot') {
+      apShowMessage('当前不是 Autopilot 模式：请先切换模式并完成授权。', 'error');
+      return;
+    }
+    $('apStart').disabled = true;
+    try {
+      const res = await sendAutopilotCommand('START_AUTOPILOT', { goal });
+      if (!res?.ok) {
+        apShowMessage(`未启动：${res?.reason ?? '未知原因'}`, 'error');
+      } else if (res.status === 'OUTREACH_COMPLETE') {
+        apShowMessage(`今日已达每日上限 ${session.settings?.dailyGreetingCap ?? 5}，未进入 Discovery，直接结束本轮 Outreach。`, 'warn');
+      } else {
+        apShowMessage('Autopilot 已启动：Background 会按步骤推进，关掉本面板也会继续运行。', 'info');
+      }
+    } finally {
+      $('apStart').disabled = false;
+      await refreshAutopilotStatus();
+      await renderAgentStatePanel();
+    }
+  };
+
+  $('apPause').onclick = async () => {
+    const res = await sendAutopilotCommand('PAUSE_AUTOPILOT');
+    apShowMessage(res?.ok ? '已暂停：不会再发起新的搜索或打招呼。' : `暂停失败：${res?.reason}`, res?.ok ? 'info' : 'error');
+    await refreshAutopilotStatus();
+  };
+
+  $('apResume').onclick = async () => {
+    const res = await sendAutopilotCommand('RESUME_AUTOPILOT');
+    apShowMessage(res?.ok ? '已恢复运行。' : `无法恢复：${res?.reason}`, res?.ok ? 'info' : 'error');
+    await refreshAutopilotStatus();
+  };
+
+  $('apStop').onclick = async () => {
+    const res = await sendAutopilotCommand('STOP_AUTOPILOT');
+    apShowMessage(res?.ok ? '已停止本次 Session（Events / Job State / Action 历史保留）。' : `停止失败：${res?.reason}`, res?.ok ? 'info' : 'error');
+    await refreshAutopilotStatus();
+  };
+}
+
+/** storage 变化即刷新（Background 推进时 UI 自动跟随；但 UI 不是执行前提） */
+function bindAutopilotStorageWatcher() {
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      if (!changes[RUNTIME_KEY] && !changes['jobAgentActions']) return;
+      refreshAutopilotStatus().catch(() => {});
+      if (changes['jobAgentActions']) renderAgentStatePanel().catch(() => {});
+    });
+  } catch {
+    /* 某些上下文不支持 */
+  }
+}
+
 // ---------------- Phase 2：持久化状态面板（Side Panel 只是展示，storage 才是事实来源） ----------------
 export async function renderAgentStatePanel() {
   const el = $('agentStateBody');
@@ -845,8 +949,9 @@ async function checkBoss() {
 async function checkAi() {
   const b = $('aiBadge');
   try {
-    const ok = (await fetch(`${AI_BASE}/health`, { signal: AbortSignal.timeout(AI_TIMEOUT) })).ok;
-    b.textContent = ok ? 'AI 服务已连接' : 'AI 服务异常';
+    const health = await checkHealth(AI_TIMEOUT);
+    const ok = health.ok === true;
+    b.textContent = ok ? `AI 服务已连接${health.version ? ` (${health.version})` : ''}` : 'AI 服务异常';
     b.className = `badge ${ok ? 'badge-ok' : 'badge-bad'}`;
     return ok;
   } catch {
@@ -1336,6 +1441,9 @@ async function init() {
   await refreshQuota();
   await loadGreetText();
   await renderAgentStatePanel();
+  bindAutopilotDashboard();
+  bindAutopilotStorageWatcher();
+  await refreshAutopilotStatus();
 }
 
 init();
