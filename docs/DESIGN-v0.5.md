@@ -70,6 +70,7 @@
 | `greeting-builder.js` | 56 | 话术构建（Review/Autopilot 共用，发送前固化） | `buildGreetingMessage` |
 | `core-logic.js` | 219 | 纪律层纯函数：城市解析、硬过滤、排序、详情目标、打招呼闸门 | `resolveBossContext`、`hardFilter`、`canGreet`、`hhmm` |
 | `content.js` | 481 | **执行面**：只读抓取 + 确定性点击/填写 | 消息：`scrape / detailScrape / greetFull / greet / bossContext / pageHealth / diagnose` |
+| `tab-messaging.js` | 121 | **可靠通信**：等 content script 就绪、可重试错误分类与翻译、reload 兜底（有硬上界） | `waitForContentReady`、`sendMessageReliably`、`isRetryableMessageError`、`friendlyMessageError` |
 | `sidepanel.js` / `.html` / `.css` | 1670 / 260 / 154 | **UI**：目标输入、Review 审批、Autopilot 控制台、运行状态、日报查看与导出 | — |
 | `popup.js` / `popup.html` | 95 | 轻量启动器（打开 Side Panel） | — |
 | `auto.js` / `auto.html` | 425 | V0.3 Legacy 调试台（不参与 V0.5 流程） | — |
@@ -404,7 +405,8 @@ settings（cap/时间）                                              ├→ ren
 |---|---|
 | 节奏偏慢 | 每 tick ≤3 步 + 页面等待（搜索 3s、详情/打招呼 4.2s）+ alarm 最小间隔 → 一轮十几分钟；靠"事件驱动 + 提前收敛 + 详情预算"缓解 |
 | Chrome 必须在运行 | 关闭期间不推进；日报靠 catch-up |
-| 风险检测是启发式 | 只看 URL/标题/卡片数；iframe 内验证码可能漏检（打招呼失败 2 次后才会暂停） |
+| 风险检测是启发式 | 只看 URL/标题/卡片数（且优先用 `tabs.get` 的 url/title，**不依赖 content script**）；iframe 内验证码可能漏检（打招呼失败 2 次后才会暂停） |
+| 页面就绪依赖轮询 | 详情/打招呼走"导航 → 等 content script 就绪（≤20×800ms）→ 发消息（失败重试 3 次 + 一次 reload 兜底）"；极端慢页面仍可能超时并计入工具失败 |
 | 候选池不跨天 | 日报的"今日未联系高质量候选"隔天不再保留 |
 | 历史事件字段缺失 | 旧事件的 `href/roundIndex/mode` 缺失时降级渲染（不猜） |
 | `eligible` 需新数据 | Phase 3 修复前的轮次没有该字段，日报不显示该行 |

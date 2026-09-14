@@ -87,11 +87,16 @@ describe('Background SW 架构约束（V0.5 §1 / §3 / §4）', () => {
   });
 
   it('不猜 selector：所有页面操作都通过 content script 消息类型', () => {
-    for (const msgType of ["'scrape'", "'detailScrape'", "'greetFull'", "'bossContext'", "'pageHealth'"]) {
+    // 页面动作的"消息类型"分布在 background.js（编排）与 tab-messaging.js（可靠通信）两个模块
+    const messaging = read(join('extension', 'tab-messaging.js'));
+    for (const msgType of ["'scrape'", "'detailScrape'", "'greetFull'", "'bossContext'"]) {
       expect(background).toContain(msgType);
     }
-    // Background 里不允许出现 querySelector / 直接 DOM 操作
-    expect(background).not.toMatch(/querySelector|document\./);
+    expect(messaging).toContain("type: 'pageHealth'"); // 就绪探测消息
+    // Background 与其通信模块里都不允许出现 querySelector / 直接 DOM 操作
+    for (const src of [background, messaging]) {
+      expect(src).not.toMatch(/querySelector|document\./);
+    }
   });
 
   it('Autopilot 只维护一个执行标签（不会每个 Job 开一个 tab）', () => {

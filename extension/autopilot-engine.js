@@ -345,6 +345,9 @@ export function createAutopilotEngine(deps) {
       paused: false,
       pauseReason: null,
       lastError: null,
+      // 重要：Resume 是"处理完问题后重新开始"，连续失败计数必须清零，
+      // 否则恢复后一次偶发失败就会立刻再次暂停（日志里还会出现 3/2 这种越界计数）。
+      consecutiveToolFailures: 0,
       dailyGreetingCap: check.settings.dailyGreetingCap,
       log: appendLog(r, 'Autopilot resumed'),
     }));
@@ -1286,7 +1289,7 @@ export function createAutopilotEngine(deps) {
         ...r,
         consecutiveToolFailures: failures,
         lastError: result.toolFailure.message,
-        log: appendLog(r, `工具失败 ${failures}/${FAILURE_THRESHOLD}：${result.toolFailure.message}`),
+        log: appendLog(r, `工具失败 ${Math.min(failures, FAILURE_THRESHOLD)}/${FAILURE_THRESHOLD}：${result.toolFailure.message}`),
       }));
       if (failures >= FAILURE_THRESHOLD) {
         await pause(

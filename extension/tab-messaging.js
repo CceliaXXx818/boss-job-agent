@@ -1,0 +1,164 @@
+// tab-messaging.js —— V0.5：与内容脚本通信的可靠性封装（可测试、无 chrome 依赖）
+//
+// 为什么需要它（真实事故）：
+//   MV3 里 `chrome.tabs.sendMessage` 在"目标页面还没注入 content script"时会抛
+//   `Could not establish connection. Receiving end does not exist.`。
+//   详情页/打招呼页比列表页更重，而 Autopilot 的执行标签是 **inactive**（会被 Chrome 节流），
+//   固定 sleep 几秒后直接发消息就会命中这个错误；内部重试若仍然"只等固定时间"，就会连续失败
+//   并被引擎升级为 PAUSED。
+//
+// 正确做法（本模块）：
+//   1. 先 ping 轻量消息（pageHealth）确认 content script 已就绪，再发真正的业务消息；
+//   2. 把"接收端不存在 / 端口关闭 / 扩展上下文失效"这类错误视为**可重试**；
+//   3. 兜底：若仍不可达，reload 一次目标标签（reload 会重新注入 content script）再等；
+//   4. 重试次数有硬上界，不做无限重试；
+//   5. 错误信息翻译成用户能看懂的话。
+//
+// 所有外部能力（send/ping/sleep/reload、以及风险检查）都由调用方注入 → 可在 Node 里完整测试。
+
+/** 可重试的消息错误特征（Chrome 在不同版本/场景下的措辞不同，这里全部覆盖） */
+export const RETRYABLE_ERROR_MARKERS = Object.freeze([
+  'Receiving end does not exist',
+  'Could not establish connection',
+  'The message port closed',
+  'message port closed before a response',
+  'Extension context invalidated',
+  'No tab with id',
+]);
+
+export const DEFAULT_TIMING = Object.freeze({
+  /** 等待内容脚本就绪：最多轮询次数 */
+  readyTries: 20,
+  /** 等待内容脚本就绪：每次间隔（毫秒）。20 × 800ms ≈ 16s 上限 */
+  readyMs: 800,
+  /** 单条消息的重试次数（含首次） */
+  messageTries: 3,
+  /** 单条消息重试之间的间隔（毫秒），实际按倍数退避 */
+  messageRetryMs: 800,
+  /** 触发 reload 兜底前已失败的次数 */
+  reloadAfterFailures: 2,
+});
+
+export function isRetryableMessageError(message) {
+  const text = String(message ?? '');
+  return RETRYABLE_ERROR_MARKERS.some((marker) => text.includes(marker));
+}
+
+/** 把底层错误翻译成用户能看懂的一句话 */
+export function friendlyMessageError(message) {
+  const text = String(message ?? '');
+  if (text.includes('Receiving end does not exist') || text.includes('Could not establish connection')) {
+    return '页面内容脚本未就绪（页面可能还在加载，或该标签已不在 BOSS 域下）';
+  }
+  if (text.includes('message port closed') || text.includes('message port closed before a response')) {
+    return '页面在响应前被关闭或跳转（可能被重定向/拦截）';
+  }
+  if (text.includes('Extension context invalidated')) {
+    return '扩展刚被重新加载（请重新加载后重试；已打开的页面需要刷新）';
+  }
+  if (text.includes('No tab with id')) {
+    return '执行标签已不存在（可能被手动关闭）';
+  }
+  return text || '未知错误';
+}
+
+/**
+ * ping 目标标签，判断 content script 是否已就绪。
+ * @returns {Promise<object|null>} pageHealth 响应，或 null
+ */
+export async function pingTab({ send, tabId, payload = { type: 'pageHealth' } }) {
+  try {
+    return (await send(tabId, payload)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 等待内容脚本就绪。
+ * @param {{send: Function, sleep: Function, tabId: number, checkRisk?: Function, tries?: number, delayMs?: number}} input
+ *        checkRisk：可选，返回 `{risk, reason}` 时立即中止等待（例如页面已跳到登录/验证页）
+ * @returns {Promise<{ok: boolean, page?: object|null, risk?: string, reason?: string}>}
+ */
+export async function waitForContentReady({
+  send,
+  sleep,
+  tabId,
+  checkRisk = null,
+  tries = DEFAULT_TIMING.readyTries,
+  delayMs = DEFAULT_TIMING.readyMs,
+}) {
+  for (let i = 0; i < Math.max(1, tries); i++) {
+    const page = await pingTab({ send, tabId });
+    if (page) return { ok: true, page };
+    if (checkRisk) {
+      const risk = await checkRisk(tabId);
+      if (risk?.risk) return { ok: false, risk: risk.risk, reason: risk.reason };
+    }
+    if (i < tries - 1) await sleep(delayMs);
+  }
+  return { ok: false, reason: '等待页面响应超时（内容脚本未注入）' };
+}
+
+/**
+ * 发送业务消息：内部处理"接收端不存在"，最多重试 messageTries 次，必要时 reload 一次兜底。
+ *
+ * @param {{
+ *   send: Function, sleep: Function, tabId: number, message: object,
+ *   reload?: Function|null, checkRisk?: Function|null,
+ *   tries?: number, retryMs?: number, reloadAfterFailures?: number
+ * }} input
+ * @returns {Promise<{ok: boolean, response?: any, error?: string, risk?: string, reason?: string, attempts?: number, reloaded?: boolean}>}
+ */
+export async function sendMessageReliably({
+  send,
+  sleep,
+  tabId,
+  message,
+  reload = null,
+  checkRisk = null,
+  tries = DEFAULT_TIMING.messageTries,
+  retryMs = DEFAULT_TIMING.messageRetryMs,
+  reloadAfterFailures = DEFAULT_TIMING.reloadAfterFailures,
+}) {
+  let attempts = 0;
+  let failures = 0;
+  let reloaded = false;
+  let lastError = null;
+
+  while (attempts < Math.max(1, tries)) {
+    attempts++;
+    try {
+      const response = await send(tabId, message);
+      return { ok: true, response, attempts, reloaded };
+    } catch (e) {
+      lastError = e?.message ?? String(e);
+      // 不可重试的错误（例如权限/域名不匹配）直接返回，避免无意义重试
+      if (!isRetryableMessageError(lastError)) {
+        return { ok: false, error: friendlyMessageError(lastError), attempts, reloaded };
+      }
+      failures++;
+
+      // 每次都先确认目标是否已经变成了风险页（登录/验证），能给出更准确的原因
+      if (checkRisk) {
+        const risk = await checkRisk(tabId);
+        if (risk?.risk) return { ok: false, risk: risk.risk, reason: risk.reason, attempts, reloaded };
+      }
+
+      // 兜底：reload 一次（reload 会重新注入 content script），然后再等就绪
+      if (!reloaded && reload && failures >= reloadAfterFailures) {
+        reloaded = true;
+        try {
+          await reload(tabId);
+          await sleep(retryMs);
+          await waitForContentReady({ send, sleep, tabId, checkRisk });
+        } catch {
+          /* reload 失败继续走下面的等待 */
+        }
+      }
+      if (attempts < tries) await sleep(retryMs * attempts);
+    }
+  }
+
+  return { ok: false, error: friendlyMessageError(lastError), attempts, reloaded };
+}

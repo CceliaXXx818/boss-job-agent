@@ -346,3 +346,25 @@ describe('K. SW interruption（Release Blocking Requirement）', () => {
     expect(await allEventsByType(EVENT_TYPES.AUTOPILOT_STOPPED)).toHaveLength(1);
   });
 });
+
+describe('Resume 必须重置连续失败计数（否则恢复后一次偶发失败就再次暂停）', () => {
+  it('失败 2 次暂停 → Resume 后计数归零 → 再失败 1 次不会立即暂停', async () => {
+    const h = makeHarness({ jobs: [makeJob({ jobId: 'j-1', score: 88 })] });
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    await h.engine.advanceAutopilot(); // PLAN
+    h.browser.search = async () => ({ ok: false, error: '模拟搜索失败' });
+
+    await h.engine.advanceAutopilot(); // 失败 1
+    const second = await h.engine.advanceAutopilot(); // 失败 2 → PAUSED
+    expect(second.status).toBe(AUTOPILOT_STATUS.PAUSED);
+    expect((await loadRuntime()).consecutiveToolFailures).toBeGreaterThanOrEqual(2);
+
+    const resumed = await h.engine.resumeAutopilot();
+    expect(resumed.ok).toBe(true);
+    expect((await loadRuntime()).consecutiveToolFailures).toBe(0); // 关键：清零
+
+    const afterOneMore = await h.engine.advanceAutopilot(); // 再失败 1 次
+    expect(afterOneMore.status).not.toBe(AUTOPILOT_STATUS.PAUSED); // 不应立刻再暂停
+    expect((await loadRuntime()).consecutiveToolFailures).toBe(1);
+  });
+});

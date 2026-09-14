@@ -33,6 +33,7 @@ import * as greeting from './greeting-builder.js';
 import * as ai from './ai-client.js';
 import * as core from './core-logic.js';
 import * as dailyReport from './daily-report-service.js';
+import { pingTab, sendMessageReliably, waitForContentReady } from './tab-messaging.js';
 
 /** 每次唤醒最多推进的 bounded step 数（每个 step 之间都会 persist） */
 export const MAX_STEPS_PER_WAKE = 3;
@@ -45,8 +46,13 @@ export const PERIODIC_TICK_MINUTES = 1;
 /** 单个 bounded 浏览器操作的安全重试次数（V0.5 §31） */
 export const SAFE_RETRY = 1;
 /** 等待 content script 就绪的轮询次数与间隔 */
-const CONTENT_WAIT_TRIES = 12;
-const CONTENT_WAIT_MS = 1500;
+const CONTENT_WAIT_TRIES = 20;
+const CONTENT_WAIT_MS = 800;
+/** 单条消息的重试次数与间隔（处理"内容脚本还没就绪"这类可重试错误） */
+const MESSAGE_TRIES = 3;
+const MESSAGE_RETRY_MS = 800;
+/** 等待内容脚本就绪时，每次轮询的间隔（与上面的 CONTENT_WAIT_MS 配合，上限约 16s） */
+const CONTENT_READY_MS = CONTENT_WAIT_MS;
 
 const GREET_LABELS = ['打招呼', '立即沟通', '和TA聊聊', '开聊', '开始沟通', '打个招呼', '马上沟通', '立即开聊', '聊一聊', '发消息'];
 
@@ -57,19 +63,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function createBrowserAdapter() {
   const queryBossTabs = () => chrome.tabs.query({ url: ['https://*.zhipin.com/*'] });
 
-  async function readHealth(tabId) {
+  /** 直接读标签页本身（不依赖 content script）：标签被关掉/跳到其它域名都能立刻发现 */
+  async function getTabOrNull(tabId) {
     try {
-      const page = await chrome.tabs.sendMessage(tabId, { type: 'pageHealth' });
-      return page ?? null;
+      return (await chrome.tabs.get(tabId)) ?? null;
     } catch {
       return null;
     }
   }
 
-  /** 平台风险判定：只看 URL / 标题 / 卡片数量，不猜 DOM 选择器 */
-  function classifyRisk(page) {
-    const url = String(page?.url ?? '');
-    const title = String(page?.title ?? '');
+  /**
+   * 平台风险判定：只看事实（URL / 标题 / 卡片数量），不猜 DOM 选择器。
+   * 优先用 `chrome.tabs.get` 的 url/title —— 这样**即使 content script 没注入**也能识别
+   * "已跳登录页 / 验证码页 / 城市页"，避免把这类情况误判成"工具失败"。
+   */
+  function classifyRisk(page, tab = null) {
+    const url = String(page?.url ?? tab?.url ?? '');
+    const title = String(page?.title ?? tab?.title ?? '');
     const blob = `${url} ${title}`;
     if (/captcha|geetest|\/safe\/|verify|security-check/i.test(blob)) {
       return { risk: RISK_REASONS.CAPTCHA, reason: '检测到验证码/安全校验页面，已暂停，请人工处理 BOSS 页面' };
@@ -80,7 +90,7 @@ function createBrowserAdapter() {
     if (/风险|异常|限制/i.test(title)) {
       return { risk: RISK_REASONS.RISK_PAGE, reason: `BOSS 页面提示异常（${title}），已暂停` };
     }
-    if (/\/web\/geek\/jobs/.test(url) && Number(page?.cardCount ?? 0) === 0) {
+    if (/\/web\/geek\/jobs/.test(url) && page && Number(page?.cardCount ?? 0) === 0) {
       return {
         risk: RISK_REASONS.BROWSER_CONTEXT_INVALID,
         reason: '岗位列表为空（可能未登录或城市未选择），已暂停',
@@ -89,14 +99,28 @@ function createBrowserAdapter() {
     return null;
   }
 
-  /** 等待 content script 就绪（不是重试业务操作，只是等待页面可对话） */
-  async function waitForContent(tabId) {
-    for (let i = 0; i < CONTENT_WAIT_TRIES; i++) {
-      const page = await readHealth(tabId);
-      if (page) return page;
-      await sleep(CONTENT_WAIT_MS);
+  /** 给等待/重试逻辑用的风险检查（不依赖 content script） */
+  async function checkTabRisk(tabId) {
+    const tab = await getTabOrNull(tabId);
+    if (!tab) return { risk: RISK_REASONS.AUTOPILOT_TAB_UNAVAILABLE, reason: '执行标签已不存在（可能被手动关闭）' };
+    return classifyRisk(null, tab) ?? null;
+  }
+
+  const send = (tabId, message) => chrome.tabs.sendMessage(tabId, message);
+  const reload = async (tabId) => {
+    try {
+      await chrome.tabs.reload?.(tabId);
+    } catch {
+      /* reload 失败不影响主流程，后续仍会重试 */
     }
-    return null;
+  };
+
+  async function readHealth(tabId) {
+    const page = await pingTab({ send, tabId });
+    if (page) return page;
+    // content script 未就绪时退化为"只凭标签信息"的健康快照
+    const tab = await getTabOrNull(tabId);
+    return tab ? { url: tab.url, title: tab.title, readyState: 'unknown', cardCount: null } : null;
   }
 
   async function getContext() {
@@ -121,26 +145,17 @@ function createBrowserAdapter() {
   async function health() {
     const rt = await loadRuntime();
     if (!rt.autopilotTabId) return { risk: null };
-    try {
-      await chrome.tabs.get(rt.autopilotTabId);
-    } catch {
-      // 执行标签不存在不是"风险"，让 ensureTab 去重建（连续失败才 PAUSED）
-      return { risk: null, tabMissing: true };
-    }
-    const page = await readHealth(rt.autopilotTabId);
-    if (!page) return { risk: null };
-    return classifyRisk(page) ?? { risk: null };
+    const tab = await getTabOrNull(rt.autopilotTabId);
+    if (!tab) return { risk: null, tabMissing: true };
+    const page = await pingTab({ send, tabId: rt.autopilotTabId });
+    return classifyRisk(page, tab) ?? { risk: null };
   }
 
   /** 保证存在唯一的 Autopilot 执行标签（优先复用，不抢占用户当前标签） */
   async function ensureTab(preferredId) {
     if (preferredId) {
-      try {
-        const tab = await chrome.tabs.get(preferredId);
-        if (tab?.id) return { tabId: tab.id, reused: true };
-      } catch {
-        /* 标签已被用户关闭，重建 */
-      }
+      const tab = await getTabOrNull(preferredId);
+      if (tab?.id) return { tabId: tab.id, reused: true };
     }
     let attempts = 0;
     while (attempts <= SAFE_RETRY) {
@@ -150,11 +165,19 @@ function createBrowserAdapter() {
           url: 'https://www.zhipin.com/web/geek/jobs',
           active: false,
         });
-        const page = await waitForContent(created.id);
-        if (page) {
+        const ready = await waitForContentReady({
+          send,
+          sleep,
+          tabId: created.id,
+          checkRisk: checkTabRisk,
+          tries: CONTENT_WAIT_TRIES,
+          delayMs: CONTENT_WAIT_MS,
+        });
+        if (ready.ok) {
           await patchRuntime((r) => ({ ...r, autopilotTabId: created.id, tabFailureCount: 0 }));
           return { tabId: created.id, reused: false };
         }
+        if (ready.risk) return { risk: ready.risk, reason: ready.reason };
         throw new Error('执行标签页未就绪（content script 无响应）');
       } catch (e) {
         const last = String(e?.message ?? e);
@@ -174,9 +197,8 @@ function createBrowserAdapter() {
     const rt = await loadRuntime();
     let tabId = rt.autopilotTabId;
     if (tabId) {
-      try {
-        await chrome.tabs.get(tabId);
-      } catch {
+      const tab = await getTabOrNull(tabId);
+      if (!tab) {
         const rebuilt = await ensureTab(null);
         if (rebuilt?.risk) return rebuilt;
         tabId = rebuilt.tabId;
@@ -189,76 +211,113 @@ function createBrowserAdapter() {
     return job(tabId);
   }
 
+  /**
+   * 统一的"导航 → 等就绪 → 发消息"流程。
+   * 这是修复 `Receiving end does not exist` 的关键：**先等内容脚本就绪，再发业务消息**，
+   * 并把可重试错误交给 sendMessageReliably（内部含一次 reload 兜底）。
+   */
+  async function navigateAndAsk(tabId, url, message, { validate = null } = {}) {
+    const tabRisk = await checkTabRisk(tabId);
+    if (tabRisk?.risk) return { ok: false, risk: tabRisk.risk, reason: tabRisk.reason };
+
+    await chrome.tabs.update(tabId, { url });
+
+    const ready = await waitForContentReady({
+      send,
+      sleep,
+      tabId,
+      checkRisk: checkTabRisk,
+      tries: CONTENT_WAIT_TRIES,
+      delayMs: CONTENT_READY_MS,
+    });
+    if (!ready.ok) {
+      if (ready.risk) return { ok: false, risk: ready.risk, reason: ready.reason };
+      return { ok: false, retryable: true, error: ready.reason ?? '页面未就绪' };
+    }
+
+    const sent = await sendMessageReliably({
+      send,
+      sleep,
+      tabId,
+      message,
+      reload,
+      checkRisk: checkTabRisk,
+      tries: MESSAGE_TRIES,
+      retryMs: MESSAGE_RETRY_MS,
+    });
+    if (!sent.ok) return { ok: false, ...sent };
+
+    const page = ready.page;
+    const risk = classifyRisk(page, await getTabOrNull(tabId));
+    if (risk) return { ok: false, ...risk };
+
+    if (validate) {
+      const verdict = validate(sent.response);
+      if (!verdict.ok) return { ok: false, retryable: true, error: verdict.error, response: sent.response };
+    }
+    return { ok: true, response: sent.response, page, reloaded: sent.reloaded };
+  }
+
   async function search(tabId, query) {
     const url = `https://www.zhipin.com/web/geek/jobs?query=${encodeURIComponent(query.keyword)}&city=${query.cityCode}`;
     let lastError = null;
     for (let attempt = 0; attempt <= SAFE_RETRY; attempt++) {
-      await chrome.tabs.update(tabId, { url });
-      await sleep(3000);
-      for (let i = 0; i < CONTENT_WAIT_TRIES; i++) {
-        try {
-          const res = await chrome.tabs.sendMessage(tabId, { type: 'scrape' });
-          if (res?.url && /\/chengshi\//.test(res.url)) {
-            return { ok: false, risk: RISK_REASONS.BROWSER_CONTEXT_INVALID, reason: 'BOSS 跳转到城市页，需要人工选择城市' };
-          }
-          const page = await readHealth(tabId);
-          const risk = classifyRisk(page);
-          if (risk) return { ok: false, ...risk };
-          if (res?.count > 0) return { ok: true, rows: res.rows ?? [], count: res.count, url: res.url };
-          lastError = '岗位列表为空';
-        } catch (e) {
-          lastError = String(e?.message ?? e);
+      const res = await navigateAndAsk(tabId, url, { type: 'scrape' });
+      if (res.risk) return { ok: false, risk: res.risk, reason: res.reason };
+      if (res.ok) {
+        const response = res.response ?? {};
+        if (response.url && /\/chengshi\//.test(response.url)) {
+          return { ok: false, risk: RISK_REASONS.BROWSER_CONTEXT_INVALID, reason: 'BOSS 跳转到城市页，需要人工选择城市' };
         }
-        await sleep(CONTENT_WAIT_MS);
+        if (response.count > 0) return { ok: true, rows: response.rows ?? [], count: response.count, url: response.url };
+        lastError = '岗位列表为空';
+      } else {
+        lastError = res.error ?? '搜索失败';
       }
+      if (attempt < SAFE_RETRY) await sleep(CONTENT_WAIT_MS);
     }
-    const page = await readHealth(tabId);
-    const risk = classifyRisk(page);
-    if (risk) return { ok: false, ...risk };
+    const health = await checkTabRisk(tabId);
+    if (health?.risk) return { ok: false, risk: health.risk, reason: health.reason };
     return { ok: false, error: `搜索失败：${lastError ?? '未知原因'}` };
+  }
+
+  /** 详情解析是否真的拿到了内容（避免"响应成功但页面还没渲染"被当成成功） */
+  function hasDetailContent(res) {
+    if (!res || res.ok === false) return false;
+    return Boolean(String(res.descFull ?? '').length || res.name || res.salaryRaw || res.asciiSalary);
   }
 
   async function detail(tabId, job) {
     let lastError = null;
     for (let attempt = 0; attempt <= SAFE_RETRY; attempt++) {
-      try {
-        await chrome.tabs.update(tabId, { url: `https://www.zhipin.com${job.href}` });
-        await sleep(4200);
-        const res = await chrome.tabs.sendMessage(tabId, { type: 'detailScrape' });
-        const page = await readHealth(tabId);
-        const risk = classifyRisk(page);
-        if (risk) return { ok: false, ...risk };
-        if (res?.ok !== false) return { ok: true, detail: res };
-        lastError = res?.error ?? '详情解析失败';
-      } catch (e) {
-        lastError = String(e?.message ?? e);
-      }
-      await sleep(1200);
+      const res = await navigateAndAsk(tabId, `https://www.zhipin.com${job.href}`, { type: 'detailScrape' }, {
+        validate: (response) =>
+          hasDetailContent(response) ? { ok: true } : { ok: false, error: '详情内容为空（页面可能未渲染完）' },
+      });
+      if (res.risk) return { ok: false, risk: res.risk, reason: res.reason };
+      if (res.ok) return { ok: true, detail: res.response };
+      lastError = res.error ?? '详情解析失败';
+      if (attempt < SAFE_RETRY) await sleep(1200);
     }
     return { ok: false, error: `详情抓取失败：${lastError ?? '未知原因'}` };
   }
 
   async function greet(tabId, action) {
-    try {
-      await chrome.tabs.update(tabId, { url: `https://www.zhipin.com${action.payload?.href ?? ''}` });
-      await sleep(4200);
-      const page = await readHealth(tabId);
-      const risk = classifyRisk(page);
-      if (risk) return { ok: false, ...risk };
-      const res = await chrome.tabs.sendMessage(tabId, {
-        type: 'greetFull',
-        labels: GREET_LABELS,
-        text: action.payload?.message ?? '',
-      });
-      const ok = res?.ok === true && (res.stage === 'sent' || res.stage === 'sent_by_enter');
-      if (ok) return { ok: true };
-      return { ok: false, error: res?.detail ?? res?.stage ?? '打招呼未确认发送', stage: res?.stage ?? null };
-    } catch (e) {
-      return { ok: false, error: String(e?.message ?? e) };
-    }
+    const res = await navigateAndAsk(tabId, `https://www.zhipin.com${action.payload?.href ?? ''}`, {
+      type: 'greetFull',
+      labels: GREET_LABELS,
+      text: action.payload?.message ?? '',
+    });
+    if (res.risk) return { ok: false, ...res };
+    if (!res.ok) return { ok: false, error: res.error ?? '打招呼未确认发送' };
+    const response = res.response ?? {};
+    const ok = response.ok === true && (response.stage === 'sent' || response.stage === 'sent_by_enter');
+    if (ok) return { ok: true };
+    // 消息已送达但发送未确认 → 不回内部重试（可能已部分执行），交给 Action 记账
+    return { ok: false, error: response.detail ?? response.stage ?? '打招呼未确认发送', stage: response.stage ?? null };
   }
 
-  return { getContext, health, ensureTab, search, detail, greet, withTab, classifyRisk };
+  return { getContext, health, ensureTab, search, detail, greet, withTab, classifyRisk, checkTabRisk, navigateAndAsk };
 }
 
 // ---------------- 引擎 ----------------
