@@ -430,7 +430,8 @@ settings（cap/时间）                                              ├→ ren
 | Chrome 必须在运行 | 关闭期间不推进；日报靠 catch-up |
 | 风险检测是启发式 | 只看 URL/标题/卡片数（且优先用 `tabs.get` 的 url/title，**不依赖 content script**）；iframe 内验证码可能漏检（打招呼失败 2 次后才会暂停） |
 | 页面就绪依赖轮询 | 详情/打招呼走"导航 → 等 content script 就绪（≤20×800ms）→ 发消息（失败重试 3 次 + 一次 reload 兜底）"；极端慢页面仍可能超时并计入工具失败 |
-| 失败分两类处理 | **传输级**（消息通道断/内容脚本未注入）→ 计工具失败，连续 2 次 PAUSED；**页面级**（内容脚本正常返回但该页解析失败/内容为空）→ 只跳过该岗位继续（记入 `skippedDetailJobs`），连续 3 个页面级失败才 PAUSED（说明页面结构可能已变化） |
+| 失败分两类处理 | **传输级**（消息通道断 / content script 未注入 / bfcache 关闭端口）→ 计工具失败，连续 2 次 PAUSED；**页面级**（能应答但页面仍在加载、入口没出现、解析为空、发送未确认）→ 只跳过该岗位继续（详情记入 `skippedDetailJobs`），连续 3 个页面级失败才 PAUSED（说明页面结构可能已变化） |
+| 能应答 ≠ 内容可用 | `pageHealth` 汇报 `loading`（readyState / `page-loading` 占位符 / "加载中"文案）与 `textLength`；详情与打招呼都要求 `loading === false` 才发业务消息，且 `greetFull` / `detailScrapeFull` 内部还会各自等页面脱离加载态；入口"进入聊天"是有界重试（3 次 × 2.5s）而非一次判定失败 |
 | 候选池不跨天 | 日报的"今日未联系高质量候选"隔天不再保留 |
 | 历史事件字段缺失 | 旧事件的 `href/roundIndex/mode` 缺失时降级渲染（不猜） |
 | `eligible` 需新数据 | Phase 3 修复前的轮次没有该字段，日报不显示该行 |

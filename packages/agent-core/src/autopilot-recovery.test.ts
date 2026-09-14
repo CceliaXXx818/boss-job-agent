@@ -410,3 +410,49 @@ describe('页面级失败 vs 传输级失败（一个坏页面不该把整轮打
     expect(rt.lastRisk).toBe('BROWSER_TOOL_FAILURE_THRESHOLD');
   });
 });
+
+describe('打招呼的页面级失败不再拖垮整个 Session（真实事故）', () => {
+  it('个别岗位页面没就绪（kind=page）→ 该 Action 失败，但继续处理其他岗位', async () => {
+    const jobs = [makeJob({ jobId: 'j-1', score: 92 }), makeJob({ jobId: 'j-2', score: 90 })];
+    const h = makeHarness(
+      {
+        jobs,
+        // 第 1 个岗位打招呼时页面没就绪（页面级），第 2 个正常
+        greetResults: [{ ok: false, error: '未找到"进入聊天"入口', kind: 'page' } as never],
+      },
+      { dailyGreetingCap: 2, minimumAutoGreetingScore: 80, batchQualifiedTarget: 2 },
+    );
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    const run = await h.runUntil(done, { maxSteps: 200 });
+    expect(run.reached).toBe(true);
+
+    const rt = await loadRuntime();
+    expect(rt.status).not.toBe(AUTOPILOT_STATUS.PAUSED); // 关键：没有因为一个坏页面暂停
+    // 第 2 个岗位仍然被联系
+    expect(h.calls.greet).toEqual(['j-1', 'j-2']);
+    const actions = await getAllActions();
+    const byJob = Object.fromEntries(actions.map((a) => [a.jobId, a.status]));
+    expect(byJob['j-1']).toBe('failed');
+    expect(byJob['j-2']).toBe('success');
+  });
+
+  it('连续 3 个岗位页面级失败 → 暂停并说明页面结构可能变化', async () => {
+    const jobs = [1, 2, 3, 4].map((i) => makeJob({ jobId: `j-${i}`, score: 92 }));
+    const h = makeHarness(
+      {
+        jobs,
+        greetResults: [
+          { ok: false, error: '页面加载超时', kind: 'page' } as never,
+          { ok: false, error: '页面加载超时', kind: 'page' } as never,
+          { ok: false, error: '页面加载超时', kind: 'page' } as never,
+        ],
+      },
+      { dailyGreetingCap: 4, minimumAutoGreetingScore: 80, batchQualifiedTarget: 4 },
+    );
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    const run = await h.runUntil((rt) => rt.status === AUTOPILOT_STATUS.PAUSED, { maxSteps: 200 });
+    expect(run.reached).toBe(true);
+    const rt = await loadRuntime();
+    expect(rt.pauseReason).toContain('无法完成操作');
+  });
+});

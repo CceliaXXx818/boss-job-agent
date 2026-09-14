@@ -201,22 +201,44 @@ function createBrowserAdapter() {
    * 这是修复 `Receiving end does not exist` 的关键：**先等内容脚本就绪，再发业务消息**，
    * 并把可重试错误交给 sendMessageReliably（内部含一次 reload 兜底）。
    */
-  async function navigateAndAsk(tabId, url, message, { validate = null } = {}) {
+  async function navigateAndAsk(tabId, url, message, { validate = null, readyCheck = null } = {}) {
     const tabRisk = await checkTabRisk(tabId);
     if (tabRisk?.risk) return { ok: false, risk: tabRisk.risk, reason: tabRisk.reason };
 
     await chrome.tabs.update(tabId, { url });
+
+    // isUsable：不仅要求 content script 能应答，还要求**页面内容已经可用**
+    // （真实事故：能应答但页面仍是"加载中"，打招呼必然找不到入口）
+    const isUsable = readyCheck
+      ? (page) => Boolean(page) && (page.loading === undefined || page.loading === false)
+      : null;
+    const waitReady = async () => {
+      await waitForContentReady({
+        send,
+        sleep,
+        tabId,
+        checkRisk: checkTabRisk,
+        isUsable,
+        tries: CONTENT_WAIT_TRIES,
+        delayMs: CONTENT_READY_MS,
+      });
+    };
 
     const ready = await waitForContentReady({
       send,
       sleep,
       tabId,
       checkRisk: checkTabRisk,
+      isUsable,
       tries: CONTENT_WAIT_TRIES,
       delayMs: CONTENT_READY_MS,
     });
     if (!ready.ok) {
       if (ready.risk) return { ok: false, risk: ready.risk, reason: ready.reason };
+      if (ready.timeout && readyCheck) {
+        // 页面迟迟没离开加载态 → 这是"该页面"的问题，不是工具坏（上层按 kind 决定是否跳过）
+        return { ok: false, kind: 'page', error: '页面加载超时（内容始终处于加载中）' };
+      }
       return { ok: false, retryable: true, error: ready.reason ?? '页面未就绪' };
     }
 
@@ -227,6 +249,7 @@ function createBrowserAdapter() {
       message,
       reload,
       checkRisk: checkTabRisk,
+      waitReady,
       tries: MESSAGE_TRIES,
       retryMs: MESSAGE_RETRY_MS,
     });
@@ -323,6 +346,7 @@ function createBrowserAdapter() {
     let lastStage = null;
     for (let attempt = 0; attempt <= SAFE_RETRY; attempt++) {
       const res = await navigateAndAsk(tabId, `https://www.zhipin.com${job.href}`, { type: 'detailScrape' }, {
+        readyCheck: true,
         validate: (response) =>
           hasDetailContent(response)
             ? { ok: true }
@@ -340,18 +364,29 @@ function createBrowserAdapter() {
   }
 
   async function greet(tabId, action) {
-    const res = await navigateAndAsk(tabId, `https://www.zhipin.com${action.payload?.href ?? ''}`, {
-      type: 'greetFull',
-      labels: GREET_LABELS,
-      text: action.payload?.message ?? '',
-    });
+    const res = await navigateAndAsk(
+      tabId,
+      `https://www.zhipin.com${action.payload?.href ?? ''}`,
+      {
+        type: 'greetFull',
+        labels: GREET_LABELS,
+        text: action.payload?.message ?? '',
+      },
+      { readyCheck: true },
+    );
     if (res.risk) return { ok: false, ...res };
-    if (!res.ok) return { ok: false, error: res.error ?? '打招呼未确认发送' };
+    if (!res.ok) return { ok: false, kind: res.kind ?? null, error: res.error ?? '打招呼未确认发送' };
     const response = res.response ?? {};
     const ok = response.ok === true && (response.stage === 'sent' || response.stage === 'sent_by_enter');
     if (ok) return { ok: true };
-    // 消息已送达但发送未确认 → 不回内部重试（可能已部分执行），交给 Action 记账
-    return { ok: false, error: response.detail ?? response.stage ?? '打招呼未确认发送', stage: response.stage ?? null };
+    // 消息已送达但发送未确认（入口没出现 / 点了没清空）→ 属于"这个页面的问题"，
+    // 不回内部重试（可能已部分执行），交给 Action 记账，并按页面级失败处理。
+    return {
+      ok: false,
+      kind: 'page',
+      error: response.detail ?? response.stage ?? '打招呼未确认发送',
+      stage: response.stage ?? null,
+    };
   }
 
   return { getContext, health, ensureTab, search, detail, greet, withTab, classifyRisk, checkTabRisk, navigateAndAsk };

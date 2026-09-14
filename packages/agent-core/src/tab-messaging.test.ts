@@ -189,7 +189,11 @@ describe('适配器接线（结构断言，防止回退到"固定 sleep 后直�
   it('detail / greet / search 都走统一的 navigateAndAsk（先等就绪再发消息）', () => {
     expect(src).toMatch(/async function navigateAndAsk\(/);
     expect(src).toMatch(/const res = await navigateAndAsk\(tabId, `https:\/\/www\.zhipin\.com\$\{job\.href\}`/);
-    expect(src).toMatch(/await navigateAndAsk\(tabId, `https:\/\/www\.zhipin\.com\$\{action\.payload\?\.href/);
+    // greet 现在传对象参数（含 readyCheck），因此只断言它走 navigateAndAsk + readyCheck
+    const greetBlock = src.slice(src.indexOf('async function greet(tabId, action)'), src.indexOf('return { getContext, health, ensureTab'));
+    expect(greetBlock).toContain('await navigateAndAsk(');
+    expect(greetBlock).toContain("type: 'greetFull'");
+    expect(greetBlock).toContain('readyCheck: true');
     expect(src).toMatch(/await navigateAndAsk\(tabId, url, \{ type: 'scrape' \}\)/);
   });
 
@@ -210,5 +214,67 @@ describe('适配器接线（结构断言，防止回退到"固定 sleep 后直�
   it('详情解析要求"真的拿到内容"才算成功', () => {
     expect(src).toMatch(/function hasDetailContent\(res\)/);
     expect(src).toMatch(/validate: \(response\) =>/);
+  });
+});
+
+describe('bfcache 与页面内容就绪（真实事故）', () => {
+  it('bfcache 措辞被识别为可重试（导航时旧页面进入 bfcache）', () => {
+    const msg = 'The page keeping the extension port is moved into back/forward cache, so the message channel is closed.';
+    expect(isRetryableMessageError(msg)).toBe(true);
+    expect(friendlyMessageError(msg)).toContain('bfcache');
+  });
+
+  it('重试前会重新等待页面就绪（否则会把消息又发给已进入 bfcache 的旧页面）', async () => {
+    const n = 2;
+    let calls = 0;
+    const { send } = makeSend([...Array(n).fill({ throw: 'Receiving end does not exist' }), { ok: { ok: true } }]);
+    const waitReady = vi.fn(async () => {});
+    const res = await sendMessageReliably({
+      send,
+      sleep: noSleep,
+      tabId: 1,
+      message: {},
+      waitReady,
+      tries: 3,
+      retryMs: 1,
+    });
+    expect(res.ok).toBe(true);
+    calls = waitReady.mock.calls.length;
+    expect(calls).toBeGreaterThanOrEqual(1); // 每次可重试失败后都会先等就绪
+  });
+
+  it('isUsable：能应答但仍在加载态时，继续等待而不算就绪', async () => {
+    const pages = [
+      { url: 'https://www.zhipin.com/job_detail/x.html', loading: true, cardCount: 0 },
+      { url: 'https://www.zhipin.com/job_detail/x.html', loading: true, cardCount: 0 },
+      { url: 'https://www.zhipin.com/job_detail/x.html', loading: false, cardCount: 0 },
+    ];
+    let i = 0;
+    const send = async () => pages[Math.min(i++, pages.length - 1)];
+    const res = await waitForContentReady({
+      send,
+      sleep: noSleep,
+      tabId: 1,
+      isUsable: (p: { loading?: boolean }) => p.loading === false,
+      tries: 5,
+      delayMs: 1,
+    });
+    expect(res.ok).toBe(true);
+    expect(i).toBe(3);
+  });
+
+  it('一直处于加载态 → 返回 timeout 标记（上层按"页面级"处理，不暂停整个 Session）', async () => {
+    const send = async () => ({ url: 'https://www.zhipin.com/job_detail/x.html', loading: true, cardCount: 0 });
+    const res = await waitForContentReady({
+      send,
+      sleep: noSleep,
+      tabId: 1,
+      isUsable: (p: { loading?: boolean }) => p.loading === false,
+      tries: 3,
+      delayMs: 1,
+    });
+    expect(res.ok).toBe(false);
+    expect(res.timeout).toBe(true);
+    expect(res.reason).toContain('加载超时');
   });
 });

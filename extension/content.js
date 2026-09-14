@@ -121,7 +121,19 @@ function visibleLeafTexts() {
 }
 
 // 尝试找到并点击“进入聊天”入口（多个文案变体，逐个试）
-async function clickEntrance() {
+async function clickEntrance({ attempts = 3, waitMs = 2500 } = {}) {
+  const editorBefore = getEditor();
+  if (editorBefore) return { clicked: true, opened: true };
+  let last = { clicked: false, opened: false };
+  for (let round = 0; round < attempts; round++) {
+    last = await clickEntranceOnce();
+    if (last.opened) return last;
+    if (round < attempts - 1) await sleepInPage(waitMs); // 入口通常在页面加载完成后 1~3 秒出现
+  }
+  return last;
+}
+
+async function clickEntranceOnce() {
   const editorBefore = getEditor();
   if (editorBefore) return { clicked: true, opened: true };
   for (const label of GREET_LABELS_ALL) {
@@ -150,6 +162,8 @@ function visibleTextCandidates(root) {
 
 // 打招呼完整动作：进入聊天 → 若给了话术则填入输入框 → 点发送/回车
 async function greetFull(labels, text) {
+  // 先等页面脱离"加载中"，再找入口 —— 否则必然报 no_chat_entrance
+  await waitForPageReady({ tries: 12, delayMs: 1200 });
   const entrance = await clickEntrance();
   await sleepInPage(1600);
   const editor = getEditor();
@@ -389,6 +403,7 @@ function detailScrape() {
 
 // 滚动到页面各处（触发懒加载）后合并两次读取
 async function detailScrapeFull() {
+  await waitForPageReady({ tries: 8, delayMs: 1000 });
   let first;
   try {
     first = detailScrape();
@@ -456,12 +471,41 @@ function bossContext() {
  * 只返回 URL / 标题 / 卡片数量这类事实，不做任何 selector 猜测：
  * 风险判定（验证码 / 登录失效 / 城市页）由 background.js 依据这些事实决定。
  */
+/**
+ * 页面是否仍处于"加载中"状态。
+ * BOSS 详情页/列表页是 SPA：content script 在 document_idle 就注入了，但业务内容可能还在加载，
+ * 此时点"进入聊天"必然找不到入口（真实事故：打招呼连续失败，现场只剩"加载中，请稍候"）。
+ */
+function isPageLoading() {
+  if (document.readyState !== 'complete') return true;
+  const holder = pick(
+    () => document.querySelector('.page-loading, [class*="page-loading"], [class*="loading-wrap"], [class*="loading-box"]'),
+    null,
+  );
+  if (holder) return true;
+  const head = pick(() => (document.body?.innerText ?? '').slice(0, 400), '');
+  if (/加载中|请稍候/.test(head)) return true;
+  return false;
+}
+
+/** 等页面内容就绪（有界；不猜业务选择器，只看"还在不在加载态"） */
+async function waitForPageReady({ tries = 12, delayMs = 1200 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    if (!isPageLoading()) return true;
+    await sleepInPage(delayMs);
+  }
+  return !isPageLoading();
+}
+
 function pageHealth() {
   return {
     url: location.href,
     title: document.title,
     readyState: document.readyState,
     cardCount: pick(() => cardRows().length, 0),
+    // 供 Background 判断"内容是否可用"（仅凭能应答是不够的）
+    loading: isPageLoading(),
+    textLength: pick(() => (document.body?.innerText ?? '').length, 0),
   };
 }
 

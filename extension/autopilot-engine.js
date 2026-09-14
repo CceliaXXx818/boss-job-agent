@@ -1111,6 +1111,14 @@ export function createAutopilotEngine(deps) {
     }
 
     if (action.status === deps.queue.ACTION_STATUS.APPROVED) {
+      // 页面级失败（入口没出现 / 页面仍加载中 / 点了没清空）与传输级失败要分开处理：
+      // 前者是"这个岗位的页面问题"，只让该 Action 失败并继续；后者才说明工具/连接有问题。
+      if ((rt.consecutivePageFailures ?? 0) >= 3) {
+        return {
+          pause: `连续 ${rt.consecutivePageFailures} 个岗位页面无法完成操作（BOSS 页面结构可能已变化）`,
+          code: RISK_REASONS.BROWSER_CONTEXT_INVALID,
+        };
+      }
       await deps.queue.markExecuting(actionId, { now: now() });
       // 从这里到记录结果之间存在中断窗口：SW 如果在 greet 期间被杀，Action 会留在 executing，
       // 恢复时按保守原则标记 requires_manual（V0.5 §38），不会自动重发。
@@ -1140,6 +1148,7 @@ export function createAutopilotEngine(deps) {
             outreachQueue: rest,
             activeActionId: null,
             todayGreetingCount: after.effective,
+            consecutivePageFailures: 0,
             log: appendLog(rt, `Greeting sent：${action.jobTitle ?? action.jobId}`),
           },
           nextStep: AUTOPILOT_STEPS.OUTREACH_EXECUTE,
@@ -1155,14 +1164,22 @@ export function createAutopilotEngine(deps) {
       });
       await deps.queue.markFailed(actionId, { error: res?.error ?? '打招呼未确认发送', now: now() });
       activity(`Greeting failed：${action.jobTitle ?? action.jobId}（不会标记为 GREETED）`);
+      const pageLevel = res?.kind === 'page';
+      const pageFailures = pageLevel ? (rt.consecutivePageFailures ?? 0) + 1 : (rt.consecutivePageFailures ?? 0);
+      const patch = {
+        outreachQueue: rest,
+        activeActionId: null,
+        todayGreetingCount: daily.effective,
+        consecutivePageFailures: pageFailures,
+        log: appendLog(rt, `Greeting failed：${action.jobTitle ?? action.jobId}${pageLevel ? `（页面级 ${pageFailures}/3）` : ''}`),
+      };
+      if (pageLevel) {
+        // 页面级：只让这个 Action 失败并继续下一个，不把整个 Session 暂停
+        return { patch, nextStep: AUTOPILOT_STEPS.OUTREACH_EXECUTE };
+      }
       return {
-        patch: {
-          outreachQueue: rest,
-          activeActionId: null,
-          todayGreetingCount: daily.effective,
-          log: appendLog(rt, `Greeting failed：${action.jobTitle ?? action.jobId}`),
-        },
-        // 单次失败继续处理下一批；连续失败达到阈值会由 dispatcher 升级为 PAUSED
+        patch,
+        // 传输级：单次失败继续处理下一批；连续失败达到阈值会由 dispatcher 升级为 PAUSED
         toolFailure: { step: AUTOPILOT_STEPS.OUTREACH_EXECUTE, message: res?.error ?? '打招呼未确认发送' },
       };
     }

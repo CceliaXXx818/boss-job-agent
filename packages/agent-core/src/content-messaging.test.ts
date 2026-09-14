@@ -63,3 +63,37 @@ describe('content.js：只要答应了异步回复，就必须恰好回一次', 
     expect(content).toMatch(/ok: false, error: String\(e\?\.message \?\? e\), stage: 'content_error'/);
   });
 });
+
+describe('页面加载态：能应答 ≠ 内容可用（真实事故：打招呼时页面还在"加载中"）', () => {
+  it('pageHealth 汇报 loading 与 textLength（供上游判断内容是否可用）', () => {
+    expect(content).toMatch(/function isPageLoading\(\)/);
+    expect(content).toMatch(/loading: isPageLoading\(\)/);
+    expect(content).toMatch(/textLength:/);
+  });
+
+  it('isPageLoading 覆盖三种加载态信号（readyState / 占位符 / 文案）', () => {
+    const body = content.slice(content.indexOf('function isPageLoading()'), content.indexOf('function pageHealth()'));
+    expect(body).toContain("document.readyState !== 'complete'");
+    expect(body).toMatch(/page-loading/);
+    expect(body).toMatch(/加载中/);
+  });
+
+  it('greetFull 与 detailScrapeFull 都会先等页面脱离加载态', () => {
+    const greet = content.slice(content.indexOf('async function greetFull'), content.indexOf('async function greetFull') + 600);
+    expect(greet).toContain('await waitForPageReady(');
+    const detail = content.slice(content.indexOf('async function detailScrapeFull'), content.indexOf('async function detailScrapeFull') + 600);
+    expect(detail).toContain('await waitForPageReady(');
+  });
+
+  it('入口是异步出现的 → clickEntrance 有界重试（而不是一次找不到就报 no_chat_entrance）', () => {
+    expect(content).toMatch(/async function clickEntrance\(\{ attempts = 3, waitMs = 2500 \} = \{\}\)/);
+    expect(content).toMatch(/async function clickEntranceOnce\(\)/);
+    const body = content.slice(content.indexOf('async function clickEntrance({'), content.indexOf('async function clickEntranceOnce()'));
+    expect(body).toContain('await clickEntranceOnce()');
+    expect(body).toMatch(/for \(let round = 0; round < attempts; round\+\+\)/);
+  });
+
+  it('等页面就绪有硬上界（不会无限等待）', () => {
+    expect(content).toMatch(/async function waitForPageReady\(\{ tries = 12, delayMs = 1200 \} = \{\}\)/);
+  });
+});

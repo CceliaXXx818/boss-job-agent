@@ -28,6 +28,9 @@ export const RETRYABLE_ERROR_MARKERS = Object.freeze([
   'message channel closed',
   'before a response was received',
   'A listener indicated an asynchronous response',
+  // bfcache：导航时旧页面被移入 back/forward cache，端口随之关闭（真实事故）
+  'back/forward cache',
+  'moved into back/forward cache',
   'Extension context invalidated',
   'No tab with id',
 ]);
@@ -70,6 +73,9 @@ export function friendlyMessageError(message) {
   if (text.includes('Receiving end does not exist') || text.includes('Could not establish connection')) {
     return '页面内容脚本未就绪（页面可能还在加载，或该标签已不在 BOSS 域下）';
   }
+  if (text.includes('back/forward cache')) {
+    return '页面在导航中被切换（旧页面进入 bfcache），消息通道关闭';
+  }
   if (
     text.includes('message port closed') ||
     text.includes('message channel closed') ||
@@ -101,28 +107,31 @@ export async function pingTab({ send, tabId, payload = { type: 'pageHealth' } })
 
 /**
  * 等待内容脚本就绪。
- * @param {{send: Function, sleep: Function, tabId: number, checkRisk?: Function, tries?: number, delayMs?: number}} input
+ * @param {{send: Function, sleep: Function, tabId: number, checkRisk?: Function|null, isUsable?: Function|null, tries?: number, delayMs?: number}} input
  *        checkRisk：可选，返回 `{risk, reason}` 时立即中止等待（例如页面已跳到登录/验证页）
- * @returns {Promise<{ok: boolean, page?: object|null, risk?: string, reason?: string}>}
+ *        isUsable：可选，判断"内容是否真的可用"（例如 `page.loading === false`）——能应答 ≠ 内容可用
+ * @returns {Promise<{ok: boolean, page?: object|null, risk?: string, reason?: string, timeout?: boolean}>}
  */
 export async function waitForContentReady({
   send,
   sleep,
   tabId,
   checkRisk = null,
+  isUsable = null,
   tries = DEFAULT_TIMING.readyTries,
   delayMs = DEFAULT_TIMING.readyMs,
 }) {
   for (let i = 0; i < Math.max(1, tries); i++) {
     const page = await pingTab({ send, tabId });
-    if (page) return { ok: true, page };
+    // 能应答 ≠ 内容可用：isUsable 用来要求"页面已脱离加载态"
+    if (page && (!isUsable || isUsable(page))) return { ok: true, page };
     if (checkRisk) {
       const risk = await checkRisk(tabId);
       if (risk?.risk) return { ok: false, risk: risk.risk, reason: risk.reason };
     }
     if (i < tries - 1) await sleep(delayMs);
   }
-  return { ok: false, reason: '等待页面响应超时（内容脚本未注入）' };
+  return { ok: false, timeout: true, reason: isUsable ? '页面加载超时（内容始终未就绪）' : '等待页面响应超时（内容脚本未注入）' };
 }
 
 /**
@@ -130,7 +139,7 @@ export async function waitForContentReady({
  *
  * @param {{
  *   send: Function, sleep: Function, tabId: number, message: object,
- *   reload?: Function|null, checkRisk?: Function|null,
+ *   reload?: Function|null, checkRisk?: Function|null, waitReady?: Function|null,
  *   tries?: number, retryMs?: number, reloadAfterFailures?: number
  * }} input
  * @returns {Promise<{ok: boolean, response?: any, error?: string, risk?: string, reason?: string, attempts?: number, reloaded?: boolean}>}
@@ -142,6 +151,7 @@ export async function sendMessageReliably({
   message,
   reload = null,
   checkRisk = null,
+  waitReady = null,
   tries = DEFAULT_TIMING.messageTries,
   retryMs = DEFAULT_TIMING.messageRetryMs,
   reloadAfterFailures = DEFAULT_TIMING.reloadAfterFailures,
@@ -179,6 +189,14 @@ export async function sendMessageReliably({
           await waitForContentReady({ send, sleep, tabId, checkRisk });
         } catch {
           /* reload 失败继续走下面的等待 */
+        }
+      }
+      // 关键：重试前先确认"新的页面已经就绪"，否则会把消息又发给已经进入 bfcache 的旧页面
+      if (waitReady) {
+        try {
+          await waitReady();
+        } catch {
+          /* 等待失败就继续按退避重试 */
         }
       }
       if (attempts < tries) await sleep(retryMs * attempts);

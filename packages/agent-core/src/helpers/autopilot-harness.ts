@@ -49,7 +49,7 @@ export type HarnessOptions = {
   planQueries?: string[];
   initialStorage?: Record<string, unknown>;
   now?: Date;
-  greetResults?: Array<{ ok: boolean; error?: string; risk?: string; reason?: string }>;
+  greetResults?: Array<{ ok: boolean; error?: string; risk?: string; reason?: string; kind?: 'page' | 'transport' }>;
   /** 让第 N 次 /score 调用失败（从 1 开始计数），用于测试评分失败与 Resume 后的续评 */
   scoreFailAt?: number[];
   scoreError?: string;
@@ -144,7 +144,7 @@ export function createHarness(opts: HarnessOptions = {}) {
       const next = greetResults.shift();
       if (!next) return { ok: true };
       if (next.risk) return { ok: false, risk: next.risk, reason: next.reason ?? '平台风险' };
-      return { ok: next.ok, error: next.error };
+      return { ok: next.ok, error: next.error, kind: next.kind };
     },
   };
 
