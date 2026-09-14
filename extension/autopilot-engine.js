@@ -261,7 +261,13 @@ export function createAutopilotEngine(deps) {
       completedAt: null,
       lastError: null,
       cityConflictWarning: null,
-      log: appendLog({ log: [] }, `Autopilot started｜城市 ${context.cityName}｜今日已联系 ${todayGreetingCount}/${settings.dailyGreetingCap}`),
+      log: [
+        ...appendLog({ log: [] }, `Autopilot started｜城市 ${context.cityName}｜今日已联系 ${todayGreetingCount}/${settings.dailyGreetingCap}`),
+        ...appendLog(
+          { log: [] },
+          `本次生效设置｜阈值 ${settings.minimumAutoGreetingScore}｜每日上限 ${settings.dailyGreetingCap}｜候选目标 ${settings.batchQualifiedTarget}｜最多 ${settings.maxDiscoveryRounds} 轮（每轮最多补搜 ${settings.maxReplanPerRound} 次）｜工作时间 ${settings.workingHours.start}-${settings.workingHours.end}`,
+        ),
+      ],
     }));
 
     await deps.events.appendEvent({
@@ -276,9 +282,16 @@ export function createAutopilotEngine(deps) {
         dailyGreetingCap: settings.dailyGreetingCap,
         todayGreetingCount,
         maxDiscoveryRounds: settings.maxDiscoveryRounds,
+        // 记录本次会话生效的配置，便于事后核对"到底按哪套设置跑的"
+        minimumAutoGreetingScore: settings.minimumAutoGreetingScore,
+        batchQualifiedTarget: settings.batchQualifiedTarget,
+        maxReplanPerRound: settings.maxReplanPerRound,
+        workingHours: settings.workingHours,
       },
     }, { now: now() });
-    activity(`Autopilot started｜城市 ${context.cityName}｜今日已联系 ${todayGreetingCount}/${settings.dailyGreetingCap}`);
+    activity(
+      `Autopilot started｜城市 ${context.cityName}｜今日已联系 ${todayGreetingCount}/${settings.dailyGreetingCap}｜阈值 ${settings.minimumAutoGreetingScore}｜候选目标 ${settings.batchQualifiedTarget}｜最多 ${settings.maxDiscoveryRounds} 轮｜工作时间 ${settings.workingHours.start}-${settings.workingHours.end}`,
+    );
 
     // 提醒：离工作时间结束太近，本轮很可能跑不完（不改变执行规则，只提示）
     const remainMinutes = minutesUntilWindowEnd(
@@ -413,7 +426,8 @@ export function createAutopilotEngine(deps) {
   // ---------------- 单步执行器 ----------------
 
   /** 可自动联系候选的静态条件评估（FETCH_DETAIL 提前收敛 / SCORE 提前收敛 / EVALUATE 共用） */
-  async function evaluateEligibility(rt, settings) {
+  async function evaluateEligibility(rt, settings = null) {
+    const cfg = effectiveConfig(rt, settings ?? (await deps.settings.loadSettings()));
     const recommended = strongMatches(rt.scoredBuffer ?? []);
     let greetingValid = true;
     try {
@@ -425,7 +439,7 @@ export function createAutopilotEngine(deps) {
       greetingValid = false;
     }
     const { eligible, rejected } = filterAutopilotEligible(recommended, {
-      minimumAutoGreetingScore: rt.minimumAutoGreetingScore ?? 80,
+      minimumAutoGreetingScore: cfg.minimumAutoGreetingScore,
       hardExclusions: rt.hardExclusions ?? [],
       greetedJobIds: [...(await deps.records.getGreetedHistory())],
       greetingValid,
@@ -451,9 +465,40 @@ export function createAutopilotEngine(deps) {
     }, { now: now() });
   }
 
-  /** 本轮候选目标（只认设置里的 batchQualifiedTarget） */
-  function roundTargetOf(rt) {
-    return Number(rt.batchQualifiedTarget) || DEFAULT_TARGET_QUALIFIED;
+  /**
+   * 生效配置的唯一解析入口。
+   *
+   * 原则（V0.5 修复）：**settings 是唯一事实来源**，runtime 里那份只作为回退
+   * （跨天重置前的旧数据 / settings 暂时读不到）。
+   * 修复前的问题：候选目标、阈值、每日上限、轮次、工作时间都优先读启动时的快照，
+   * 而 Policy 读实时设置 —— 用户改了设置却"没按新设置走"。
+   */
+  function effectiveConfig(rt, settings = null) {
+    const s = settings ?? {};
+    const num = (v, fallback) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : fallback;
+    };
+    return {
+      dailyGreetingCap: num(s.dailyGreetingCap, num(rt.dailyGreetingCap, 5)),
+      minimumAutoGreetingScore: Number.isFinite(Number(s.minimumAutoGreetingScore))
+        ? Number(s.minimumAutoGreetingScore)
+        : (Number.isFinite(Number(rt.minimumAutoGreetingScore)) ? Number(rt.minimumAutoGreetingScore) : 80),
+      batchQualifiedTarget: num(s.batchQualifiedTarget, num(rt.batchQualifiedTarget, DEFAULT_TARGET_QUALIFIED)),
+      maxDiscoveryRounds: num(s.maxDiscoveryRounds, num(rt.maxDiscoveryRounds, 3)),
+      maxReplanPerRound: Number.isFinite(Number(s.maxReplanPerRound))
+        ? Number(s.maxReplanPerRound)
+        : (Number.isFinite(Number(rt.maxReplanPerRound)) ? Number(rt.maxReplanPerRound) : 1),
+      workingHours: {
+        start: s.workingHours?.start ?? rt.workingHours?.start ?? '09:00',
+        end: s.workingHours?.end ?? rt.workingHours?.end ?? '18:00',
+      },
+    };
+  }
+
+  /** 本轮候选目标（settings 优先） */
+  function roundTargetOf(rt, settings = null) {
+    return effectiveConfig(rt, settings).batchQualifiedTarget;
   }
 
   /** 每个 step 的返回：{ nextStep, status, done } */
@@ -732,8 +777,10 @@ export function createAutopilotEngine(deps) {
     );
 
     // 提前收敛：这一批评完就已经凑齐候选目标 → 不再评剩下的、也不再抓剩余详情（V0.5 Phase 3 优化）
-    const target = roundTargetOf(rt);
-    const early = await evaluateEligibility({ ...rt, scoredBuffer: merged }, null);
+    // 目标与阈值都以"当前设置"为准（stepScore 内没有 settings 变量，这里显式读取）
+    const settingsNow = await deps.settings.loadSettings();
+    const target = roundTargetOf(rt, settingsNow);
+    const early = await evaluateEligibility({ ...rt, scoredBuffer: merged }, settingsNow);
     if (early.eligible.length >= target && target > 0) {
       activity(
         `→ 已凑齐候选目标（Eligible ${early.eligible.length} / Target ${target}）：提前结束本轮详情抓取与评分`,
@@ -768,7 +815,7 @@ export function createAutopilotEngine(deps) {
     // Recommended = AI 打分到推荐线（≥75）；Autopilot Eligible = 满足自动联系静态条件
     const settings = await deps.settings.loadSettings();
     const { recommended, eligible, rejected } = await evaluateEligibility(rt, settings);
-    const target = roundTargetOf(rt);
+    const target = roundTargetOf(rt, settings);
 
     if (recommended.length) {
       await deps.records.recordJobsShortlisted({ jobs: recommended, mode: 'autopilot', at: now() });
@@ -786,7 +833,7 @@ export function createAutopilotEngine(deps) {
       eligibleCount: eligible.length,
       targetCandidates: target,
       replanCount: rt.replanCount ?? 0,
-      maxReplan: rt.maxReplanPerRound ?? 1,
+      maxReplan: effectiveConfig(rt, settings).maxReplanPerRound,
     });
     activity(`→ ${decision.reason}`);
 
@@ -819,6 +866,7 @@ export function createAutopilotEngine(deps) {
   }
 
   async function stepReplan(rt) {
+    const cfgForReplan = effectiveConfig(rt, await deps.settings.loadSettings());
     const summary = buildResultSummary({
       discoveredCount: rt.roundDiscovered?.length ?? 0,
       qualifiedCount: rt.roundQualified?.length ?? 0,
@@ -828,9 +876,9 @@ export function createAutopilotEngine(deps) {
       // Autopilot 语义：告诉模型"还差多少可自动联系候选"，而不是 V0.4 的 ≥75 目标
       eligibleCount: (rt.eligibleJobIds ?? []).length,
       targetCandidates: roundTargetOf(rt),
-      minimumAutoGreetingScore: rt.minimumAutoGreetingScore,
+      minimumAutoGreetingScore: cfgForReplan.minimumAutoGreetingScore,
       roundIndex: rt.roundIndex,
-      maxRounds: rt.maxDiscoveryRounds,
+      maxRounds: cfgForReplan.maxDiscoveryRounds,
       rejectedSamples: rt.eligibleRejectSamples ?? [],
     });
     const res = await deps.ai.replanSearch({
@@ -888,10 +936,12 @@ export function createAutopilotEngine(deps) {
   }
 
   async function stepOutreachCreate(rt) {
+    const settingsForCap = await deps.settings.loadSettings();
+    const capNow = effectiveConfig(rt, settingsForCap).dailyGreetingCap;
     const daily = await deps.records.getDailyGreetingCount(now());
-    const remaining = Math.max(0, rt.dailyGreetingCap - daily.effective);
+    const remaining = Math.max(0, capNow - daily.effective);
     if (remaining <= 0) {
-      activity(`今日已达上限 ${rt.dailyGreetingCap}，结束 Outreach`);
+      activity(`今日已达上限 ${capNow}，结束 Outreach`);
       return { nextStep: AUTOPILOT_STEPS.ROUND_END, patch: { todayGreetingCount: daily.effective, status: AUTOPILOT_STATUS.OUTREACH } };
     }
 
@@ -907,7 +957,7 @@ export function createAutopilotEngine(deps) {
     }
     const recommended = strongMatches(rt.scoredBuffer ?? []);
     const { eligible } = filterAutopilotEligible(recommended, {
-      minimumAutoGreetingScore: rt.minimumAutoGreetingScore ?? settings.minimumAutoGreetingScore,
+      minimumAutoGreetingScore: effectiveConfig(rt, settings).minimumAutoGreetingScore,
       hardExclusions: rt.hardExclusions ?? [],
       greetedJobIds: alreadyGreeted,
       greetingValid,
@@ -931,7 +981,7 @@ export function createAutopilotEngine(deps) {
     const health = await promiseOr(() => deps.browser.health(), { risk: null });
     for (const job of candidates) {
       if (planned.length >= budget) {
-        denied.push({ job, reason: `已达今日上限 ${rt.dailyGreetingCap}` });
+        denied.push({ job, reason: `已达今日上限 ${capNow}` });
         continue;
       }
       const decision = deps.policy.evaluateAutopilotGreeting({
@@ -1133,14 +1183,16 @@ export function createAutopilotEngine(deps) {
       `Round ${rt.roundIndex} completed｜发现 ${stats.discoveredCount}｜过滤后 ${stats.filteredCount}｜评分 ${stats.analyzedCount}｜推荐 ${stats.recommendedCount}｜Replan ${stats.replanCount}`,
     );
 
-    const winStart = rt.workingHours?.start ?? '09:00';
-    const winEnd = rt.workingHours?.end ?? '18:00';
+    const settingsNow = await deps.settings.loadSettings();
+    const cfgNow = effectiveConfig(rt, settingsNow);
+    const winStart = cfgNow.workingHours.start;
+    const winEnd = cfgNow.workingHours.end;
     const withinWorkingHours = deps.settings.isWithinWorkingHours(deps.core.hhmm(now()), winStart, winEnd);
     const decision = decideAfterRound({
       todayGreetingCount: daily.effective,
-      dailyGreetingCap: rt.dailyGreetingCap,
+      dailyGreetingCap: cfgNow.dailyGreetingCap,
       roundIndex: rt.roundIndex,
-      maxDiscoveryRounds: rt.maxDiscoveryRounds,
+      maxDiscoveryRounds: cfgNow.maxDiscoveryRounds,
       withinWorkingHours,
       roundHasNewCandidates: (stats.newDiscoveredCount ?? 0) > 0 && (stats.filteredCount ?? 0) > 0,
       // "有新的可继续搜索空间"= 本轮确实发现了新岗位；一个岗位都没新增说明搜索空间见底
@@ -1183,6 +1235,7 @@ export function createAutopilotEngine(deps) {
   }
 
   async function stepNextRoundPlan(rt) {
+    const cfgForReplan = effectiveConfig(rt, await deps.settings.loadSettings());
     const summary = buildResultSummary({
       discoveredCount: rt.roundDiscovered?.length ?? 0,
       qualifiedCount: rt.roundQualified?.length ?? 0,
@@ -1302,13 +1355,14 @@ export function createAutopilotEngine(deps) {
     }
 
     // 工作时间校验：超过结束时间就收工，不为凑 cap 在夜里继续联系（V0.5 §32）
+    const cfgForHours = effectiveConfig(rt, settings);
     const inHours = deps.settings.isWithinWorkingHours(
       deps.core.hhmm(now()),
-      rt.workingHours?.start ?? settings.workingHours.start,
-      rt.workingHours?.end ?? settings.workingHours.end,
+      cfgForHours.workingHours.start,
+      cfgForHours.workingHours.end,
     );
     if (!inHours) {
-      const win = `${rt.workingHours?.start ?? settings.workingHours.start}-${rt.workingHours?.end ?? settings.workingHours.end}`;
+      const win = `${cfgForHours.workingHours.start}-${cfgForHours.workingHours.end}`;
       const fin = await finishOutreach(
         `已超出工作时间（当前本地时间 ${deps.core.hhmm(now())}，工作时间 ${win}）`,
         RISK_REASONS.OUTSIDE_WORKING_HOURS,

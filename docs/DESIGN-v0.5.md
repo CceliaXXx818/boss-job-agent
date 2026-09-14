@@ -296,6 +296,25 @@ startedAt, completedAt, updatedAt, lastStepAt, lastError, log[≤40]
 
 ---
 
+### 5.4 配置来源（重要约束）
+
+**`settings`（`jobAgentSettings`）是唯一的配置事实来源；runtime 只存会话进度，不存配置快照。**
+
+修复前的问题：候选目标 / 阈值 / 每日上限 / 轮次 / 工作时间优先读**启动时写进 runtime 的快照**，
+而 Policy 读实时设置 —— 用户改了设置（尤其是会话进行中改）就会出现"一部分按新值、一部分按旧值"，
+体感就是"没按我新设置的走"。现在统一由 `effectiveConfig(rt, settings)` 解析：**settings 优先，runtime 仅作回退**
+（跨天/旧数据）。START 时会把生效配置写进 runtime、事件 metadata 与启动横幅日志，便于事后核对：
+
+```
+Autopilot started｜城市 上海｜今日已联系 0/20｜阈值 85｜候选目标 2｜最多 2 轮｜工作时间 09:00-18:00
+本次生效设置｜阈值 85｜每日上限 2｜候选目标 2｜最多 2 轮（每轮最多补搜 1 次）｜工作时间 09:00-18:00
+```
+
+配套 UI 约束：Side Panel 的 **Start 之前先把设置表单持久化**（有改动就保存并写一条 Activity），
+避免"改了设置但没点保存就直接 Start"这类假故障。
+
+---
+
 ## 8. Policy 引擎（12 条件）
 
 | 顺序 | 条件 id | 判定 | 失败原因（人类可读） |

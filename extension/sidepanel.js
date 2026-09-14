@@ -853,6 +853,26 @@ function bindAutopilotDashboard() {
     }
     $('apStart').disabled = true;
     try {
+      // 关键（V0.5 修复）：Start 前先保存设置表单。
+      // 否则"改了设置直接点 Start"会用旧设置跑，用户会以为 Agent 没按新设置走。
+      const typed = readSettingsForm();
+      const saved = session.settings;
+      const changed =
+        typed.minimumAutoGreetingScore !== saved?.minimumAutoGreetingScore ||
+        typed.dailyGreetingCap !== saved?.dailyGreetingCap ||
+        typed.batchQualifiedTarget !== saved?.batchQualifiedTarget ||
+        typed.maxDiscoveryRounds !== saved?.maxDiscoveryRounds ||
+        typed.maxReplanPerRound !== saved?.maxReplanPerRound ||
+        typed.workingHours.start !== saved?.workingHours?.start ||
+        typed.workingHours.end !== saved?.workingHours?.end ||
+        typed.monitorIntervalMinutes !== saved?.monitorIntervalMinutes ||
+        typed.dailyReportTime !== saved?.dailyReportTime;
+      if (changed) {
+        session.settings = await saveSettings({ ...session.settings, ...typed, mode: 'autopilot' });
+        fillSettingsForm();
+        addActivity('Settings', '启动前已保存你在设置里的改动');
+      }
+
       const res = await sendAutopilotCommand('START_AUTOPILOT', { goal });
       if (!res?.ok) {
         apShowMessage(`未启动：${res?.reason ?? '未知原因'}`, 'error');
@@ -861,7 +881,11 @@ function bindAutopilotDashboard() {
       } else if (res.windowWarning) {
         apShowMessage(`Autopilot 已启动，但请注意：${res.windowWarning}`, 'warn');
       } else {
-        apShowMessage('Autopilot 已启动：Background 会按步骤推进，关掉本面板也会继续运行。', 'info');
+        const st = session.settings ?? {};
+        apShowMessage(
+          `Autopilot 已启动（本次生效：阈值 ${st.minimumAutoGreetingScore}・每日上限 ${st.dailyGreetingCap}・候选目标 ${st.batchQualifiedTarget}・最多 ${st.maxDiscoveryRounds} 轮・工作时间 ${st.workingHours?.start}-${st.workingHours?.end}）。Background 会按步骤推进，关掉本面板也会继续运行。`,
+          'info',
+        );
       }
     } finally {
       $('apStart').disabled = false;

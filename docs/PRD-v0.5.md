@@ -145,6 +145,9 @@
 | `consent.autopilot` | false | 布尔 + 时间戳 | 授权记录 |
 | `resumeConfig` | boss_default | boss_default / extension_upload | Phase 6 才用 |
 
+| FR-SET-1 | 设置是唯一事实来源 | 候选目标 / 阈值 / 每日上限 / 轮次 / 工作时间 / 授权等，运行时（Autopilot 会话中）必须以**当前设置**为准；会话进行中修改设置，之后的推进立即按新值执行（不重启也生效） |
+| FR-SET-2 | 启动即核对 | 点 Start 前必须先持久化设置表单；启动后把本次生效配置显示给用户并写入日志/事件，便于核对"到底按哪套设置跑" |
+
 验收：非法输入一律钳制或回退默认并给出 warning，**不抛错、不崩界面**；旧版本键（`dailyCap`/`greetText`）只读一次迁移。
 
 ### FR-ACTION 动作队列与幂等
