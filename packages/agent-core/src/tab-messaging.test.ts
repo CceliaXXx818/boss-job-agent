@@ -39,6 +39,8 @@ describe('错误分类与文案', () => {
     for (const msg of [
       'Could not establish connection. Receiving end does not exist.',
       'The message port closed before a response was received.',
+      // 真实事故：Chrome 实际报的是 "message channel closed"，此前只写了 "message port closed"
+      'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received',
       'Extension context invalidated.',
       'No tab with id: 123',
     ]) {
@@ -46,6 +48,17 @@ describe('错误分类与文案', () => {
     }
     expect(isRetryableMessageError('Cannot access contents of the page')).toBe(false);
     expect(isRetryableMessageError('')).toBe(false);
+  });
+
+  it('channel closed 类错误会被内部重试，而不是直接升级成工具失败', async () => {
+    const channelClosed =
+      'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received';
+    const { send, count } = makeSend([{ throw: channelClosed }, { ok: { ok: true, descFull: 'JD' } }]);
+    const res = await sendMessageReliably({ send, sleep: noSleep, tabId: 3, message: { type: 'detailScrape' }, tries: 3, retryMs: 1 });
+    expect(res.ok).toBe(true);
+    expect(res.attempts).toBe(2);
+    expect(count()).toBe(2);
+    expect(friendlyMessageError(channelClosed)).toContain('未能');
   });
 
   it('错误翻译成人话（用户看得懂、知道怎么办）', () => {

@@ -131,6 +131,9 @@ export function emptyRuntime(now = new Date()) {
     autopilotTabId: null,
     tabFailureCount: 0,
     consecutiveToolFailures: 0,
+    consecutivePageFailures: 0,
+    skippedDetailJobs: [],
+    detailTargetsSkipped: [],
     lastRisk: null,
 
     startedAt: null,

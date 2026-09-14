@@ -368,3 +368,45 @@ describe('Resume 必须重置连续失败计数（否则恢复后一次偶发失
     expect((await loadRuntime()).consecutiveToolFailures).toBe(1);
   });
 });
+
+describe('页面级失败 vs 传输级失败（一个坏页面不该把整轮打死）', () => {
+  const manyJobs = (n: number) => Array.from({ length: n }, (_v, i) => makeJob({ jobId: `j-${i + 1}`, score: 88 }));
+
+  it('个别详情页解析失败 → 跳过该岗位继续，不暂停', async () => {
+    const h = makeHarness(
+      { jobs: manyJobs(6), detailFailAt: [2], detailFailureKind: 'page' },
+      { dailyGreetingCap: 1, minimumAutoGreetingScore: 99 },
+    );
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    const run = await h.runUntil(done, { maxSteps: 120 });
+    expect(run.reached).toBe(true);
+    const rt = await loadRuntime();
+    expect(rt.status).not.toBe(AUTOPILOT_STATUS.PAUSED);
+    expect(rt.consecutivePageFailures).toBe(0); // 后续成功已清零
+    expect(rt.skippedDetailJobs.length).toBeGreaterThanOrEqual(1);
+    expect(rt.skippedDetailJobs[0].jobId).toBe('j-2');
+    expect(rt.log.some((l: { text: string }) => l.text.includes('跳过无法解析的岗位'))).toBe(true);
+  });
+
+  it('连续 3 个页面级失败 → 暂停并说明"页面结构可能已变化"', async () => {
+    const h = makeHarness(
+      { jobs: manyJobs(6), detailFailAt: [1, 2, 3], detailFailureKind: 'page' },
+      { dailyGreetingCap: 1 },
+    );
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    const run = await h.runUntil((rt) => rt.status === AUTOPILOT_STATUS.PAUSED, { maxSteps: 120 });
+    expect(run.reached).toBe(true);
+    const rt = await loadRuntime();
+    expect(rt.pauseReason).toContain('无法解析');
+    expect(rt.lastRisk).toBe('BROWSER_CONTEXT_INVALID');
+  });
+
+  it('传输级失败仍然按工具失败计数（阈值 2 就暂停）—— 安全语义不变', async () => {
+    const h = makeHarness({ jobs: manyJobs(6), browserFails: { detail: 3 } }, { dailyGreetingCap: 1 });
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    const run = await h.runUntil((rt) => rt.status === AUTOPILOT_STATUS.PAUSED, { maxSteps: 120 });
+    expect(run.reached).toBe(true);
+    const rt = await loadRuntime();
+    expect(rt.lastRisk).toBe('BROWSER_TOOL_FAILURE_THRESHOLD');
+  });
+});

@@ -389,7 +389,14 @@ function detailScrape() {
 
 // 滚动到页面各处（触发懒加载）后合并两次读取
 async function detailScrapeFull() {
-  const first = detailScrape();
+  let first;
+  try {
+    first = detailScrape();
+  } catch (e) {
+    // 首次解析就失败（页面布局异常 / document.body 尚未就绪等）→ 抛出可读错误，
+    // 由 respondAsync 统一回一个 {ok:false}，绝不让消息通道静默关闭。
+    throw new Error(`详情解析失败：${e?.message ?? e}`);
+  }
   try {
     for (let y = 0; y < document.body.scrollHeight; y += 900) window.scrollTo(0, y);
     window.scrollTo(0, document.body.scrollHeight);
@@ -458,24 +465,59 @@ function pageHealth() {
   };
 }
 
+/**
+ * 统一回复封装（V0.5 修复）：
+ * 只要 handler 返回 true（表示"我会异步回复"），就**必须**恰好回一次消息 —— 成功或失败都要回。
+ * 否则发送端会收到
+ *   "A listener indicated an asynchronous response by returning true,
+ *    but the message channel closed before a response was received"
+ * 这是"内容脚本内部抛错"的典型表象，会被误判成连接问题。真实事故即由此而来。
+ */
+function respondSync(fn, sendResponse) {
+  try {
+    sendResponse({ ok: true, ...(fn() ?? {}) });
+  } catch (e) {
+    try {
+      sendResponse({ ok: false, error: String(e?.message ?? e), stage: 'content_error' });
+    } catch {
+      /* 通道已关闭，忽略 */
+    }
+  }
+}
+
+function respondAsync(fn, sendResponse) {
+  Promise.resolve()
+    .then(fn)
+    .then((r) => sendResponse({ ok: true, ...(r ?? {}) }))
+    .catch((e) => {
+      try {
+        sendResponse({ ok: false, error: String(e?.message ?? e), stage: 'content_error' });
+      } catch {
+        /* 通道已关闭，忽略 */
+      }
+    });
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'pageHealth') {
-    sendResponse({ ok: true, ...pageHealth() });
+    respondSync(() => pageHealth(), sendResponse);
   } else if (msg?.type === 'scrape') {
-    const rows = cardRows();
-    sendResponse({ ok: true, url: location.href, count: rows.length, rows });
+    respondSync(() => {
+      const rows = cardRows();
+      return { url: location.href, count: rows.length, rows };
+    }, sendResponse);
   } else if (msg?.type === 'greet') {
-    sendResponse({ ok: true, ...clickGreet(msg.labels ?? []) });
+    respondSync(() => clickGreet(msg.labels ?? []), sendResponse);
   } else if (msg?.type === 'bossContext') {
-    sendResponse({ ok: true, ...bossContext() });
+    respondSync(() => bossContext(), sendResponse);
   } else if (msg?.type === 'detailScrape') {
-    detailScrapeFull().then((r) => sendResponse({ ok: true, ...r }));
+    respondAsync(() => detailScrapeFull(), sendResponse);
     return true; // 异步（滚动后二次读取）
   } else if (msg?.type === 'greetFull') {
-    greetFull(msg.labels ?? [], msg.text ?? '').then((r) => sendResponse({ ok: true, ...r }));
+    respondAsync(() => greetFull(msg.labels ?? [], msg.text ?? ''), sendResponse);
     return true; // 异步响应
   } else if (msg?.type === 'diagnose') {
-    sendResponse({ ok: true, ...diagnose() });
+    respondSync(() => diagnose(), sendResponse);
   }
   return false;
 });

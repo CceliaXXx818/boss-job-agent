@@ -33,7 +33,7 @@ import * as greeting from './greeting-builder.js';
 import * as ai from './ai-client.js';
 import * as core from './core-logic.js';
 import * as dailyReport from './daily-report-service.js';
-import { pingTab, sendMessageReliably, waitForContentReady } from './tab-messaging.js';
+import { classifyMessageError, pingTab, sendMessageReliably, waitForContentReady } from './tab-messaging.js';
 
 /** 每次唤醒最多推进的 bounded step 数（每个 step 之间都会 persist） */
 export const MAX_STEPS_PER_WAKE = 3;
@@ -253,7 +253,16 @@ function createBrowserAdapter() {
 
     if (validate) {
       const verdict = validate(sent.response);
-      if (!verdict.ok) return { ok: false, retryable: true, error: verdict.error, response: sent.response };
+      if (!verdict.ok) {
+        return {
+          ok: false,
+          retryable: true,
+          error: verdict.error,
+          kind: verdict.kind ?? null,
+          stage: verdict.stage ?? null,
+          response: sent.response,
+        };
+      }
     }
     return { ok: true, response: sent.response, page, reloaded: sent.reloaded };
   }
@@ -289,17 +298,23 @@ function createBrowserAdapter() {
 
   async function detail(tabId, job) {
     let lastError = null;
+    let lastStage = null;
     for (let attempt = 0; attempt <= SAFE_RETRY; attempt++) {
       const res = await navigateAndAsk(tabId, `https://www.zhipin.com${job.href}`, { type: 'detailScrape' }, {
         validate: (response) =>
-          hasDetailContent(response) ? { ok: true } : { ok: false, error: '详情内容为空（页面可能未渲染完）' },
+          hasDetailContent(response)
+            ? { ok: true }
+            : { ok: false, error: '详情内容为空（页面可能未渲染完）', stage: response?.stage ?? null, kind: 'page' },
       });
       if (res.risk) return { ok: false, risk: res.risk, reason: res.reason };
       if (res.ok) return { ok: true, detail: res.response };
       lastError = res.error ?? '详情解析失败';
+      lastStage = res.stage ?? res.response?.stage ?? null;
+      if (res.kind === 'page') break; // 页面级问题重试无益，直接交给上层跳过
       if (attempt < SAFE_RETRY) await sleep(1200);
     }
-    return { ok: false, error: `详情抓取失败：${lastError ?? '未知原因'}` };
+    const kind = classifyMessageError(lastError, lastStage);
+    return { ok: false, kind, error: `详情抓取失败：${lastError ?? '未知原因'}` };
   }
 
   async function greet(tabId, action) {

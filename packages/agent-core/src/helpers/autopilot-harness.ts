@@ -54,6 +54,10 @@ export type HarnessOptions = {
   scoreFailAt?: number[];
   scoreError?: string;
   browserFails?: { search?: number; detail?: number };
+  /** detail 失败的类型：transport（默认，工具/连接问题）或 page（该页面解析失败） */
+  detailFailureKind?: 'transport' | 'page';
+  /** 让第 N 个详情失败（从 1 开始），用于测试"个别坏页面被跳过" */
+  detailFailAt?: number[];
   context?: Record<string, unknown> | null;
   searchRows?: (query: { keyword: string; round?: number }) => ReturnType<typeof makeJob>[];
   replanResponses?: Array<Record<string, unknown>>;
@@ -127,9 +131,11 @@ export function createHarness(opts: HarnessOptions = {}) {
     },
     async detail(_tabId: number, job: { jobId: string }) {
       calls.detail.push(job.jobId);
-      if (detailFailsLeft > 0) {
-        detailFailsLeft--;
-        return { ok: false, error: '模拟详情失败' };
+      const failAt = new Set(opts.detailFailAt ?? []);
+      if (detailFailsLeft > 0 || failAt.has(calls.detail.length)) {
+        if (detailFailsLeft > 0) detailFailsLeft--;
+        const kind = failAt.has(calls.detail.length) ? (opts.detailFailureKind ?? 'transport') : 'transport';
+        return { ok: false, kind, error: kind === 'page' ? '详情抓取失败：详情内容为空（页面可能未渲染完）' : '模拟详情失败' };
       }
       return { ok: true, detail: { descFull: `${job.jobId} 的职位描述`, asciiSalary: '30-50K', expEdu: ['3-5年'] } };
     },

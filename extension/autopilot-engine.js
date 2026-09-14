@@ -58,8 +58,13 @@ import { detectCityConflict } from './core-logic.js';
 export const ENGINE_VERSION = 1;
 /** 同一 bounded 浏览器操作最多 1 次安全重试（V0.5 §31） */
 export const MAX_SAFE_RETRY = 1;
-/** 连续失败达到该值即 PAUSED（不是无限 retry） */
+/** 连续失败达到该值即 PAUSED（不是无限 retry）——指"工具/连接"类失败 */
 export const FAILURE_THRESHOLD = 2;
+/**
+ * 连续"页面级"失败（内容脚本正常返回但该页解析失败/内容为空）达到该值即 PAUSED。
+ * 单个坏页面只跳过该岗位，不该把整轮打死；但连续多个都坏说明页面结构变了，必须停下来。
+ */
+export const PAGE_FAILURE_THRESHOLD = 3;
 /** 一轮内最多创建多少条 Action（防止一次创建过多） */
 export const MAX_ACTIONS_PER_ROUND = 20;
 /**
@@ -622,6 +627,33 @@ export function createAutopilotEngine(deps) {
     const res = await deps.browser.detail(rt.autopilotTabId, job);
     if (res?.risk) return { pause: res.reason ?? 'BOSS 页面需要人工处理', code: res.risk };
     if (!res?.ok) {
+      // 页面级失败（这个岗位的页面解析不了）→ 跳过该岗位继续，不暂停整轮；
+      // 传输级失败（消息通道断了/内容脚本没注入）→ 仍按"工具失败"计数。
+      if (res?.kind === 'page') {
+        const pageFailures = (rt.consecutivePageFailures ?? 0) + 1;
+        const skipped = [...(rt.skippedDetailJobs ?? []), { jobId: job.jobId, title: job.title ?? null, reason: res.error ?? '解析失败' }].slice(-20);
+        await patchRuntime((r) => ({
+          ...r,
+          consecutivePageFailures: pageFailures,
+          skippedDetailJobs: skipped,
+          log: appendLog(r, `跳过无法解析的岗位：${job.title ?? job.jobId}（${res.error ?? '解析失败'}）${pageFailures}/${PAGE_FAILURE_THRESHOLD}`),
+        }));
+        activity(`跳过无法解析的岗位：${job.title ?? job.jobId}（连续 ${pageFailures}/${PAGE_FAILURE_THRESHOLD}）`);
+        if (pageFailures >= PAGE_FAILURE_THRESHOLD) {
+          await pause(
+            `连续 ${pageFailures} 个岗位详情无法解析（BOSS 页面结构可能已变化）：${res.error ?? '解析失败'}`,
+            RISK_REASONS.BROWSER_CONTEXT_INVALID,
+          );
+          return { pause: `连续 ${pageFailures} 个详情页无法解析，已暂停以免继续空转`, code: RISK_REASONS.BROWSER_CONTEXT_INVALID };
+        }
+        return {
+          patch: {
+            currentDetailIndex: (rt.currentDetailIndex ?? 0) + 1,
+            detailTargetsSkipped: [...(rt.detailTargetsSkipped ?? []), job.jobId].slice(-50),
+          },
+          nextStep: AUTOPILOT_STEPS.FETCH_DETAIL,
+        };
+      }
       return { toolFailure: { step: AUTOPILOT_STEPS.FETCH_DETAIL, message: res?.error ?? '详情抓取失败' } };
     }
     const full = mergeDetail(job, res.detail);
@@ -635,6 +667,8 @@ export function createAutopilotEngine(deps) {
         detailBuffer: [...(rt.detailBuffer ?? []), full],
         fetchedDetailIds: [...(rt.fetchedDetailIds ?? []), job.jobId],
         currentDetailIndex: nextIndex,
+        // 抓取成功说明"页面结构没问题"，页面级失败计数归零
+        consecutivePageFailures: 0,
       },
       nextStep: shouldScoreNow ? AUTOPILOT_STEPS.SCORE : AUTOPILOT_STEPS.FETCH_DETAIL,
     };

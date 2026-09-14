@@ -20,8 +20,14 @@
 export const RETRYABLE_ERROR_MARKERS = Object.freeze([
   'Receiving end does not exist',
   'Could not establish connection',
+  // 注意：Chrome 在不同版本/场景下措辞不同，这里必须同时覆盖 port / channel 两种说法。
+  // 真实事故：只写了 "message port closed"，而实际报的是 "message channel closed"，
+  // 导致可重试判断没命中、直接升级成工具失败。
   'The message port closed',
   'message port closed before a response',
+  'message channel closed',
+  'before a response was received',
+  'A listener indicated an asynchronous response',
   'Extension context invalidated',
   'No tab with id',
 ]);
@@ -39,6 +45,20 @@ export const DEFAULT_TIMING = Object.freeze({
   reloadAfterFailures: 2,
 });
 
+/**
+ * 错误归类（决定上层怎么处理）：
+ *   transport —— 消息根本没送到/通道断了（内容脚本未注入、页面跳转、扩展重载）→ 属于"工具是否可用"的信号
+ *   page      —— 内容脚本正常回了 {ok:false}（页面布局异常 / 解析失败 / 内容为空）→ 属于"这个页面的问题"
+ *                 不应该因为这个页面的问题把整个 Autopilot 暂停
+ */
+export function classifyMessageError(message, stage = null) {
+  if (stage === 'content_error') return 'page';
+  const text = String(message ?? '');
+  if (isRetryableMessageError(text)) return 'transport';
+  if (/详情解析失败|详情内容为空|解析失败|未找到|为空/.test(text)) return 'page';
+  return 'unknown';
+}
+
 export function isRetryableMessageError(message) {
   const text = String(message ?? '');
   return RETRYABLE_ERROR_MARKERS.some((marker) => text.includes(marker));
@@ -50,8 +70,13 @@ export function friendlyMessageError(message) {
   if (text.includes('Receiving end does not exist') || text.includes('Could not establish connection')) {
     return '页面内容脚本未就绪（页面可能还在加载，或该标签已不在 BOSS 域下）';
   }
-  if (text.includes('message port closed') || text.includes('message port closed before a response')) {
-    return '页面在响应前被关闭或跳转（可能被重定向/拦截）';
+  if (
+    text.includes('message port closed') ||
+    text.includes('message channel closed') ||
+    text.includes('before a response was received') ||
+    text.includes('A listener indicated an asynchronous response')
+  ) {
+    return '页面脚本未能在超时前回复（页面可能正在跳转，或该页布局异常导致解析失败）';
   }
   if (text.includes('Extension context invalidated')) {
     return '扩展刚被重新加载（请重新加载后重试；已打开的页面需要刷新）';
