@@ -34,6 +34,7 @@ import * as ai from './ai-client.js';
 import * as core from './core-logic.js';
 import * as dailyReport from './daily-report-service.js';
 import { classifyMessageError, pingTab, sendMessageReliably, waitForContentReady } from './tab-messaging.js';
+import { classifyPageRisk, inspectJobListPage } from './page-risk.js';
 
 /** 每次唤醒最多推进的 bounded step 数（每个 step 之间都会 persist） */
 export const MAX_STEPS_PER_WAKE = 3;
@@ -53,6 +54,9 @@ const MESSAGE_TRIES = 3;
 const MESSAGE_RETRY_MS = 800;
 /** 等待内容脚本就绪时，每次轮询的间隔（与上面的 CONTENT_WAIT_MS 配合，上限约 16s） */
 const CONTENT_READY_MS = CONTENT_WAIT_MS;
+/** 抓到 0 条时的"再等等看"策略：列表是异步渲染的，不能一次为空就下结论 */
+const EMPTY_LIST_RETRIES = 3;
+const EMPTY_LIST_WAIT_MS = 1500;
 
 const GREET_LABELS = ['打招呼', '立即沟通', '和TA聊聊', '开聊', '开始沟通', '打个招呼', '马上沟通', '立即开聊', '聊一聊', '发消息'];
 
@@ -73,30 +77,11 @@ function createBrowserAdapter() {
   }
 
   /**
-   * 平台风险判定：只看事实（URL / 标题 / 卡片数量），不猜 DOM 选择器。
-   * 优先用 `chrome.tabs.get` 的 url/title —— 这样**即使 content script 没注入**也能识别
-   * "已跳登录页 / 验证码页 / 城市页"，避免把这类情况误判成"工具失败"。
+   * 平台风险判定：委托给纯函数模块 page-risk.js（只依据 URL / 标题等事实）。
+   * 注意：**不再**用"卡片数为 0"推断未登录/未选城市 —— 那会产生假阳性（无结果 / 未渲染）。
    */
   function classifyRisk(page, tab = null) {
-    const url = String(page?.url ?? tab?.url ?? '');
-    const title = String(page?.title ?? tab?.title ?? '');
-    const blob = `${url} ${title}`;
-    if (/captcha|geetest|\/safe\/|verify|security-check/i.test(blob)) {
-      return { risk: RISK_REASONS.CAPTCHA, reason: '检测到验证码/安全校验页面，已暂停，请人工处理 BOSS 页面' };
-    }
-    if (/\/web\/user\/|\/login|登录/i.test(blob)) {
-      return { risk: RISK_REASONS.LOGIN_REQUIRED, reason: 'BOSS 登录状态已失效，请重新登录后再 Resume' };
-    }
-    if (/风险|异常|限制/i.test(title)) {
-      return { risk: RISK_REASONS.RISK_PAGE, reason: `BOSS 页面提示异常（${title}），已暂停` };
-    }
-    if (/\/web\/geek\/jobs/.test(url) && page && Number(page?.cardCount ?? 0) === 0) {
-      return {
-        risk: RISK_REASONS.BROWSER_CONTEXT_INVALID,
-        reason: '岗位列表为空（可能未登录或城市未选择），已暂停',
-      };
-    }
-    return null;
+    return classifyPageRisk({ page, tab });
   }
 
   /** 给等待/重试逻辑用的风险检查（不依赖 content script） */
@@ -270,23 +255,60 @@ function createBrowserAdapter() {
   async function search(tabId, query) {
     const url = `https://www.zhipin.com/web/geek/jobs?query=${encodeURIComponent(query.keyword)}&city=${query.cityCode}`;
     let lastError = null;
+    let sawEmptyList = false;
+
     for (let attempt = 0; attempt <= SAFE_RETRY; attempt++) {
       const res = await navigateAndAsk(tabId, url, { type: 'scrape' });
       if (res.risk) return { ok: false, risk: res.risk, reason: res.reason };
-      if (res.ok) {
-        const response = res.response ?? {};
-        if (response.url && /\/chengshi\//.test(response.url)) {
-          return { ok: false, risk: RISK_REASONS.BROWSER_CONTEXT_INVALID, reason: 'BOSS 跳转到城市页，需要人工选择城市' };
-        }
-        if (response.count > 0) return { ok: true, rows: response.rows ?? [], count: response.count, url: response.url };
-        lastError = '岗位列表为空';
-      } else {
+      if (!res.ok) {
         lastError = res.error ?? '搜索失败';
+        if (attempt < SAFE_RETRY) await sleep(CONTENT_WAIT_MS);
+        continue;
       }
-      if (attempt < SAFE_RETRY) await sleep(CONTENT_WAIT_MS);
+
+      const response = res.response ?? {};
+      if (response.url && /\/chengshi\//.test(response.url)) {
+        return { ok: false, risk: RISK_REASONS.BROWSER_CONTEXT_INVALID, reason: 'BOSS 跳转到城市页，需要人工选择城市' };
+      }
+      // 以**抓取结果**为准（避免用过期快照/健康信息误判）
+      if (Number(response.count) > 0) {
+        return { ok: true, rows: response.rows ?? [], count: response.count, url: response.url };
+      }
+
+      // 抓到 0 条：可能只是列表还没渲染完 → 再等几次；仍为空则视为"该关键词无结果"
+      sawEmptyList = true;
+      let recovered = null;
+      for (let i = 0; i < EMPTY_LIST_RETRIES; i++) {
+        await sleep(EMPTY_LIST_WAIT_MS);
+        const again = await sendMessageReliably({
+          send,
+          sleep,
+          tabId,
+          message: { type: 'scrape' },
+          reload,
+          checkRisk: checkTabRisk,
+          tries: MESSAGE_TRIES,
+          retryMs: MESSAGE_RETRY_MS,
+        });
+        if (again.ok && Number(again.response?.count) > 0) {
+          recovered = again.response;
+          break;
+        }
+        if (!again.ok && again.risk) return { ok: false, risk: again.risk, reason: again.reason };
+      }
+      if (recovered) {
+        return { ok: true, rows: recovered.rows ?? [], count: recovered.count, url: recovered.url };
+      }
+
+      // 真的是空结果：不是风险，也不是失败（交给引擎跳过该关键词继续）
+      const listState = inspectJobListPage({ tab: await getTabOrNull(tabId) });
+      if (listState.risk) return { ok: false, ...listState.risk };
+      return { ok: true, rows: [], count: 0, url: response.url, empty: true };
     }
+
     const health = await checkTabRisk(tabId);
     if (health?.risk) return { ok: false, risk: health.risk, reason: health.reason };
+    if (sawEmptyList) return { ok: true, rows: [], count: 0, empty: true };
     return { ok: false, error: `搜索失败：${lastError ?? '未知原因'}` };
   }
 

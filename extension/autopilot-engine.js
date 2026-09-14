@@ -553,6 +553,25 @@ export function createAutopilotEngine(deps) {
         toolFailure: { step: AUTOPILOT_STEPS.SEARCH_QUERY, message: res?.error ?? '搜索失败' },
       };
     }
+    if (res.empty || (Number(res.count) === 0 && !(res.rows ?? []).length)) {
+      // 该关键词没有结果：这是正常情况（关键词过窄 / 该城市无此类岗位），
+      // 既不是平台风险，也不是工具失败 —— 记为"已搜索"并继续下一个关键词。
+      const stats = {
+        ...rt.currentRoundStats,
+        searchedQueries: [...(rt.currentRoundStats?.searchedQueries ?? []), query.keyword],
+        emptyQueries: [...(rt.currentRoundStats?.emptyQueries ?? []), query.keyword],
+      };
+      activity(`Search: ${query.keyword}｜无结果（已跳过，继续下一个关键词）`);
+      return {
+        patch: {
+          currentQueryIndex: rt.currentQueryIndex + 1,
+          searchedQueries: [...rt.searchedQueries, { ...query, round: rt.roundIndex }],
+          currentRoundStats: stats,
+          log: appendLog(rt, `Search ${query.keyword}：无结果`),
+        },
+        nextStep: AUTOPILOT_STEPS.SEARCH_QUERY,
+      };
+    }
     const merged = mergeSearchRows(rt.roundDiscovered, res.rows ?? [], { fromQuery: `${query.cityName}·${query.keyword}` });
     const stats = {
       ...rt.currentRoundStats,
@@ -561,6 +580,10 @@ export function createAutopilotEngine(deps) {
       newDiscoveredCount: (rt.currentRoundStats?.newDiscoveredCount ?? 0) + merged.added,
     };
     activity(`Search: ${query.keyword}｜找到 ${res.rows?.length ?? 0} 个岗位（新增 ${merged.added}）｜耗时 ${Math.round((now().getTime() - started) / 1000)}s`);
+    const emptyCount = (stats.emptyQueries ?? []).length;
+    if (emptyCount >= 3 && merged.jobs.length === 0) {
+      activity('提示：连续多个关键词都没有结果。可能是搜索词过窄，或执行标签在后台渲染受限；可换更宽的目标描述，或把 BOSS 标签切到前台后 Resume。');
+    }
     return {
       patch: {
         roundDiscovered: merged.jobs.slice(0, MAX_ROUND_DISCOVERED),

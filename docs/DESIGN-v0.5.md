@@ -70,6 +70,7 @@
 | `greeting-builder.js` | 56 | 话术构建（Review/Autopilot 共用，发送前固化） | `buildGreetingMessage` |
 | `core-logic.js` | 219 | 纪律层纯函数：城市解析、硬过滤、排序、详情目标、打招呼闸门 | `resolveBossContext`、`hardFilter`、`canGreet`、`hhmm` |
 | `content.js` | 481 | **执行面**：只读抓取 + 确定性点击/填写 | 消息：`scrape / detailScrape / greetFull / greet / bossContext / pageHealth / diagnose` |
+| `page-risk.js` | 52 | **风险判定（纯函数）**：只依据 URL/标题事实判定验证码/登录失效/风险页；空列表单独表达为 `empty` 而不是风险 | `classifyPageRisk`、`inspectJobListPage` |
 | `tab-messaging.js` | 121 | **可靠通信**：等 content script 就绪、可重试错误分类与翻译、reload 兜底（有硬上界） | `waitForContentReady`、`sendMessageReliably`、`isRetryableMessageError`、`friendlyMessageError` |
 | `sidepanel.js` / `.html` / `.css` | 1670 / 260 / 154 | **UI**：目标输入、Review 审批、Autopilot 控制台、运行状态、日报查看与导出 | — |
 | `popup.js` / `popup.html` | 95 | 轻量启动器（打开 Side Panel） | — |
@@ -123,8 +124,11 @@
 - 标签丢失 → 重建**一次**；仍失败 → `tabFailureCount++` 并返回 `AUTOPILOT_TAB_UNAVAILABLE`（启动失败 / 运行中暂停），**绝不无限重建**；
 - 所有页面动作通过 `chrome.tabs.sendMessage` 发给 `content.js`；background 里没有一处 `querySelector`/`document.`。
 
-### 4.4 风险判定（启发式但确定）
-只用**事实**判断：URL 是否命中 `captcha|geetest|/safe/|verify|security-check` → `CAPTCHA`；`/web/user/|/login|登录` → `LOGIN_REQUIRED`；标题含 风险/异常/限制 → `RISK_PAGE`；搜索页 `cardCount===0` → `BROWSER_CONTEXT_INVALID`。
+### 4.4 风险判定（启发式但确定，见 `page-risk.js`）
+只用**可靠事实**判断：URL 是否命中 `captcha|geetest|/safe/|verify|security-check` → `CAPTCHA`；`/web/user/|/login|登录` → `LOGIN_REQUIRED`；标题含 风险/异常/限制 → `RISK_PAGE`。
+**不使用**"卡片数为 0"推断风险（真实事故：用户登录着、城市也选着，却因为列表为空被判成"未登录/未选城市"而暂停）。
+空列表改由 `inspectJobListPage` 单独表达为 `empty`，上层先重试等待渲染（3 × 1.5s），仍为空则记为"该关键词无结果"并继续。
+风险判定优先用 `chrome.tabs.get` 的 url/title，因此 **content script 未注入时同样能识别登录/验证页**。
 `pageHealth` 由 `content.js` 提供（URL / title / readyState / cardCount），**不做新的选择器猜测**。
 
 ---

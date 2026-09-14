@@ -198,10 +198,13 @@ describe('适配器接线（结构断言，防止回退到"固定 sleep 后直�
     expect(src).not.toMatch(/await sleep\(3000\);\s*\n\s*for \(let i = 0; i < CONTENT_WAIT_TRIES/);
   });
 
-  it('风险判定不依赖 content script（用 tabs.get 的 url/title）', () => {
+  it('风险判定不依赖 content script，且集中在 page-risk.js 纯函数里', () => {
     expect(src).toMatch(/function classifyRisk\(page, tab = null\)/);
-    expect(src).toMatch(/tab\?\.url/);
     expect(src).toMatch(/checkTabRisk/);
+    expect(src).toMatch(/classifyPageRisk\(\{ page, tab \}\)/);
+    const risk = require('node:fs').readFileSync('extension/page-risk.js', 'utf8') as string;
+    expect(risk).toMatch(/classifyPageRisk/);
+    expect(risk).toMatch(/tab\?\.url/); // 用标签页自身信息兜底
   });
 
   it('详情解析要求"真的拿到内容"才算成功', () => {

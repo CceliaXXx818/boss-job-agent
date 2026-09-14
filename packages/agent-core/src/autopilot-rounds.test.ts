@@ -267,3 +267,40 @@ describe('G. 跨轮 Dedupe（同一天不重复处理同一个岗位）', () => 
     expect(await getAllActions()).toHaveLength(1);
   });
 });
+
+describe('空结果不是失败（用户真实事故：登录着却被告知"未登录/未选城市"）', () => {
+  it('某关键词返回 0 结果 → 继续跑下一个关键词，不暂停', async () => {
+    const jobs = [makeJob({ jobId: 'j-1', score: 90 })];
+    const h = makeHarness(
+      {
+        jobs,
+        planQueries: ['没有结果的关键词', 'AI产品经理'],
+        searchRows: (q) => (q.keyword.includes('没有结果') ? [] : jobs),
+      },
+      { dailyGreetingCap: 1 },
+    );
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    const run = await h.runUntil(done, { maxSteps: 200 });
+    expect(run.reached).toBe(true);
+
+    const rt = await loadRuntime();
+    expect(rt.status).not.toBe(AUTOPILOT_STATUS.PAUSED);
+    // 两个关键词都被搜过（空结果的那次也要记账，避免重复搜）
+    expect(h.calls.search).toEqual(['没有结果的关键词', 'AI产品经理']);
+    expect(rt.searchedQueries.map((q: { keyword: string }) => q.keyword)).toEqual(['没有结果的关键词', 'AI产品经理']);
+    expect(rt.log.some((l: { text: string }) => l.text.includes('无结果'))).toBe(true);
+  });
+
+  it('全部关键词都无结果 → 正常收工（NO_NEW_RESULTS），而不是报风险', async () => {
+    const h = makeHarness(
+      { jobs: [], searchRows: () => [], replanResponses: [{ ok: true, status: 'complete', newQueries: [] }] },
+      { dailyGreetingCap: 1, maxDiscoveryRounds: 1 },
+    );
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    const run = await h.runUntil(done, { maxSteps: 200 });
+    expect(run.reached).toBe(true);
+    const rt = await loadRuntime();
+    expect(rt.status).toBe(AUTOPILOT_STATUS.MONITORING);
+    expect(rt.lastRisk).not.toBe('BROWSER_CONTEXT_INVALID');
+  });
+});
