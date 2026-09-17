@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { makeChrome, installChrome, type ChromeStub } from './helpers/chrome-stub.js';
 import {
   buildSearchUrl,
+  collapseSameDirectionQueries,
+  keywordFingerprint,
   buildJobUrl,
   buildResultSummary,
   decideAfterRound,
@@ -254,5 +256,42 @@ describe('引擎与 runtime 的可序列化性', () => {
     for (let i = 0; i < 12; i++) await h.engine.advanceAutopilot();
     const raw = h.chromeStub.__store['jobAgentAutopilotRuntime'];
     expect(JSON.parse(JSON.stringify(raw))).toEqual(raw);
+  });
+});
+
+describe('搜索方向归并（真实问题：连续几个搜索词"新增 0"）', () => {
+  it('keywordFingerprint：去掉通用岗位后缀，得到搜索方向核心词', () => {
+    expect(keywordFingerprint('大模型产品经理')).toBe('大模型');
+    expect(keywordFingerprint('大模型')).toBe('大模型');
+    expect(keywordFingerprint('Agent 产品经理')).toBe('agent');
+    // 核心词只有 2 字符 → 不参与归并（"AI" 与 "AI产品经理" 在 BOSS 上结果差异明显，必须各搜一次）
+    expect(keywordFingerprint('AI产品经理')).not.toBe(keywordFingerprint('AI'));
+    expect(keywordFingerprint('AI平台产品经理')).toBe('ai平台');
+    expect(keywordFingerprint('大模型应用产品经理')).toBe('大模型应用');
+  });
+
+  it('把同一方向的词合并，保留更具体的表述', () => {
+    const { queries, dropped } = collapseSameDirectionQueries([
+      { cityCode: '101020100', keyword: '大模型' },
+      { cityCode: '101020100', keyword: '大模型产品经理' },
+      { cityCode: '101020100', keyword: 'Agent' },
+      { cityCode: '101020100', keyword: 'Agent产品经理' },
+    ]);
+    expect(queries.map((q) => q.keyword)).toEqual(['大模型产品经理', 'Agent产品经理']);
+    expect(dropped.map((d) => d.keyword)).toEqual(['大模型', 'Agent']);
+    expect(dropped[0].reason).toContain('同一搜索方向');
+  });
+
+  it('不同方向不合并（AI / AI平台 / 大模型应用 各搜一次）', () => {
+    const words = ['AI产品经理', 'AI平台产品经理', '大模型应用产品经理', '智能体产品经理'];
+    const { queries, dropped } = collapseSameDirectionQueries(words.map((keyword) => ({ cityCode: 'x', keyword })));
+    expect(queries).toHaveLength(4);
+    expect(dropped).toEqual([]);
+  });
+
+  it('单个词、空列表、缺关键词都能安全处理', () => {
+    expect(collapseSameDirectionQueries([{ keyword: '大模型' }]).queries).toHaveLength(1);
+    expect(collapseSameDirectionQueries([]).queries).toEqual([]);
+    expect(collapseSameDirectionQueries([{ keyword: '' }, { keyword: '' }]).dropped).toHaveLength(1);
   });
 });

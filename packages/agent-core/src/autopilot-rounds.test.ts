@@ -304,3 +304,42 @@ describe('空结果不是失败（用户真实事故：登录着却被告知"未
     expect(rt.lastRisk).not.toBe('BROWSER_CONTEXT_INVALID');
   });
 });
+
+describe('搜索日志必须能区分"页面为空"与"岗位都见过了"（真实问题：新增全是 0）', () => {
+  it('近似搜索词被合并成同一方向，只搜更具体的那个', async () => {
+    const jobs = [makeJob({ jobId: 'j-1', score: 90 })];
+    const h = makeHarness(
+      { jobs, planQueries: ['大模型产品经理', '大模型', 'Agent产品经理', 'Agent'] },
+      { dailyGreetingCap: 1, minimumAutoGreetingScore: 85, batchQualifiedTarget: 2 },
+    );
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    await h.runUntil(done, { maxSteps: 200 });
+
+    // 只搜了两个"更具体"的方向
+    expect(h.calls.search).toEqual(['大模型产品经理', 'Agent产品经理']);
+    expect(h.activities.some((a) => a.includes('搜索方向合并'))).toBe(true);
+  });
+
+  it('日志同时给出"页面 N 个"与"新增 M"，并说明重叠', async () => {
+    const jobs = [makeJob({ jobId: 'j-1', score: 90 })];
+    const h = makeHarness(
+      {
+        jobs,
+        planQueries: ['方向甲', '方向乙'],
+        // 两个不同方向返回同一批岗位（模拟 BOSS 对近似词的返回）
+        searchRows: () => jobs,
+      },
+      { dailyGreetingCap: 1, minimumAutoGreetingScore: 85, batchQualifiedTarget: 2 },
+    );
+    await h.engine.startAutopilot({ rawGoal: '上海 AI 产品经理' });
+    await h.runUntil(done, { maxSteps: 200 });
+
+    const rt = await loadRuntime();
+    const texts = rt.log.map((l: { text: string }) => l.text);
+    expect(texts.some((t: string) => t.includes('页面 1 个｜新增 1'))).toBe(true); // 第一次：新增 1
+    const overlap = texts.find((t: string) => t.includes('新增 0'));
+    expect(overlap).toBeTruthy();
+    expect(overlap).toContain('页面 1 个'); // 页面不是空的
+    expect(overlap).toContain('本轮都已见过'); // 明确说明原因
+  });
+});

@@ -58,6 +58,59 @@ export function queryKey(query) {
   return `${query?.cityCode ?? ''}|${String(query?.keyword ?? '').trim().toLowerCase()}`;
 }
 
+/** 通用岗位后缀（去掉后剩下的才是"搜索方向"核心词） */
+const ROLE_SUFFIXES = ['产品经理', '产品运营', '项目经理', '工程师', '产品专家', '专家', '专员', '主管', '经理', '岗位', '方向', '职位'];
+
+/**
+ * 搜索方向指纹：去掉通用岗位后缀后的核心词。
+ * 用途：识别"大模型" 与 "大模型产品经理"、"Agent" 与 "Agent产品经理" 这类**同一个搜索方向**，
+ * 避免花一次真实页面访问却只得到同一批岗位（真实使用中表现为"新增 0"）。
+ *
+ * 保守规则：核心词长度 < 3 时不归并 —— 例如 "AI" 与 "AI产品经理" 在 BOSS 上结果差异明显，必须各搜一次。
+ * @param {string} keyword
+ * @returns {string}
+ */
+export function keywordFingerprint(keyword) {
+  let core = String(keyword ?? '').trim().toLowerCase().replace(/\s+/g, '');
+  for (const suffix of ROLE_SUFFIXES) {
+    if (core.length > suffix.length && core.endsWith(suffix)) {
+      core = core.slice(0, -suffix.length);
+      break;
+    }
+  }
+  return core.length >= 3 ? core : `#${String(keyword ?? '').trim().toLowerCase()}`;
+}
+
+/**
+ * 合并同一搜索方向的查询：保留更具体的那个（关键词更长），并给出被合并的原因。
+ * @param {Query[]} [queries]
+ * @returns {{queries: Query[], dropped: Array<{keyword: string, reason: string}>}}
+ */
+export function collapseSameDirectionQueries(queries = []) {
+  const byFingerprint = new Map();
+  const kept = [];
+  const dropped = [];
+  for (const q of queries) {
+    const fp = keywordFingerprint(q?.keyword);
+    const existing = byFingerprint.get(fp);
+    if (!existing) {
+      byFingerprint.set(fp, q);
+      kept.push(q);
+      continue;
+    }
+    const keepNew = String(q?.keyword ?? '').length > String(existing.keyword ?? '').length;
+    if (keepNew) {
+      const idx = kept.indexOf(existing);
+      if (idx >= 0) kept.splice(idx, 1, q);
+      byFingerprint.set(fp, q);
+      dropped.push({ keyword: existing.keyword, reason: `与「${q.keyword}」属于同一搜索方向（保留更具体的表述）` });
+    } else {
+      dropped.push({ keyword: q.keyword, reason: `与「${existing.keyword}」属于同一搜索方向` });
+    }
+  }
+  return { queries: kept, dropped };
+}
+
 /** @param {Query[]} candidates @param {Query[]} [alreadySearched] @returns {Query[]} */
 export function dedupeQueries(candidates, alreadySearched = []) {
   const seen = new Set(alreadySearched.map(queryKey));

@@ -38,6 +38,7 @@ import {
 import {
   attachScores,
   buildResultSummary,
+  collapseSameDirectionQueries,
   decideReplanForCandidates,
   detailBudgetForTarget,
   filterAutopilotEligible,
@@ -535,7 +536,15 @@ export function createAutopilotEngine(deps) {
       keyword: q.keyword,
       source: q.source ?? 'initial',
     }));
-    const fresh = dedupeQueries(queries, rt.searchedQueries);
+    const freshRaw = dedupeQueries(queries, rt.searchedQueries);
+    // 合并"同一搜索方向"的近似词（如 大模型 / 大模型产品经理）：
+    // 它们在 BOSS 上返回高度重合的岗位列表，逐个搜只会得到"新增 0"并浪费时间。
+    const { queries: fresh, dropped: sameDirection } = collapseSameDirectionQueries(freshRaw);
+    if (sameDirection.length) {
+      activity(
+        `搜索方向合并：跳过 ${sameDirection.map((d) => d.keyword).join('、')}（${sameDirection[0].reason}）`,
+      );
+    }
 
     const context = await promiseOr(() => deps.browser.getContext(), null);
     const hardExclusions = resolveHardExclusions(
@@ -624,7 +633,17 @@ export function createAutopilotEngine(deps) {
       discoveredCount: merged.jobs.length,
       newDiscoveredCount: (rt.currentRoundStats?.newDiscoveredCount ?? 0) + merged.added,
     };
-    activity(`Search: ${query.keyword}｜找到 ${res.rows?.length ?? 0} 个岗位（新增 ${merged.added}）｜耗时 ${Math.round((now().getTime() - started) / 1000)}s`);
+    // 日志同时给出"页面有多少"与"新增多少"，避免"新增 0"看起来像故障
+    const pageCount = Number(res.count ?? res.rows?.length ?? 0);
+    const overlapNote =
+      merged.added === 0 && pageCount > 0
+        ? `（页面 ${pageCount} 个岗位本轮都已见过）`
+        : pageCount > merged.added
+          ? `（页面 ${pageCount} 个，其中 ${pageCount - merged.added} 个本轮已见过）`
+          : '';
+    activity(
+      `Search: ${query.keyword}｜页面 ${pageCount} 个｜新增 ${merged.added}${overlapNote}｜耗时 ${Math.round((now().getTime() - started) / 1000)}s`,
+    );
     const emptyCount = (stats.emptyQueries ?? []).length;
     if (emptyCount >= 3 && merged.jobs.length === 0) {
       activity('提示：连续多个关键词都没有结果。可能是搜索词过窄，或执行标签在后台渲染受限；可换更宽的目标描述，或把 BOSS 标签切到前台后 Resume。');
@@ -635,7 +654,7 @@ export function createAutopilotEngine(deps) {
         currentQueryIndex: rt.currentQueryIndex + 1,
         searchedQueries: [...rt.searchedQueries, { ...query, round: rt.roundIndex }],
         currentRoundStats: stats,
-        log: appendLog(rt, `Search ${query.keyword}：新增 ${merged.added}`),
+        log: appendLog(rt, `Search ${query.keyword}：页面 ${pageCount} 个｜新增 ${merged.added}${overlapNote}`),
       },
       nextStep: AUTOPILOT_STEPS.SEARCH_QUERY,
     };
@@ -1199,6 +1218,11 @@ export function createAutopilotEngine(deps) {
     activity(
       `Round ${rt.roundIndex} completed｜发现 ${stats.discoveredCount}｜过滤后 ${stats.filteredCount}｜评分 ${stats.analyzedCount}｜推荐 ${stats.recommendedCount}｜Replan ${stats.replanCount}`,
     );
+    if ((stats.newDiscoveredCount ?? 0) === 0 && (stats.searchedQueries?.length ?? 0) > 0) {
+      activity(
+        '本轮所有搜索词都没有新岗位：这些岗位今天已经搜过了（同一天不重复处理）。建议明天用同一目标再跑，或把目标写得更具体以产生新的搜索方向。',
+      );
+    }
 
     const settingsNow = await deps.settings.loadSettings();
     const cfgNow = effectiveConfig(rt, settingsNow);
