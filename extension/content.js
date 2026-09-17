@@ -498,6 +498,7 @@ async function waitForPageReady({ tries = 12, delayMs = 1200 } = {}) {
 }
 
 function pageHealth() {
+  const bodyText = pick(() => document.body?.innerText ?? '', '');
   return {
     url: location.href,
     title: document.title,
@@ -505,7 +506,9 @@ function pageHealth() {
     cardCount: pick(() => cardRows().length, 0),
     // 供 Background 判断"内容是否可用"（仅凭能应答是不够的）
     loading: isPageLoading(),
-    textLength: pick(() => (document.body?.innerText ?? '').length, 0),
+    textLength: bodyText.length,
+    // 失败现场的"证据"：页面到底显示了什么（截断、压缩空白），便于定位"刷不开"的原因
+    bodyPreview: bodyText.replace(/\s+/g, ' ').trim().slice(0, 160),
   };
 }
 

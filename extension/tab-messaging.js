@@ -93,6 +93,30 @@ export function friendlyMessageError(message) {
   return text || '未知错误';
 }
 
+/** 把"页面没就绪"的现场格式化成一句可读证据（url/标题/可见文字），便于定位"刷不开" */
+export function describePageState(page) {
+  if (!page) return '（拿不到页面信息：内容脚本无响应）';
+  const parts = [
+    `标题「${String(page.title ?? '').slice(0, 30) || '空'}」`,
+    `readyState=${page.readyState ?? '?'}`,
+    `loading=${page.loading === undefined ? '?' : page.loading}`,
+    `可见文字 ${page.textLength ?? 0} 字`,
+  ];
+  const preview = String(page.bodyPreview ?? '').slice(0, 80);
+  if (preview) parts.push(`现场：「${preview}」`);
+  return parts.join('｜');
+}
+
+/** 连续页面级失败后是否应把执行标签切到前台（后台标签渲染/交互可能受限） */
+export function shouldBringTabToFront({ consecutivePageFailures = 0, alreadyFront = false } = {}) {
+  return !alreadyFront && Number(consecutivePageFailures) >= 2;
+}
+
+/** 执行标签是否该重建（同一标签反复导航后可能退化/卡死） */
+export function shouldRecycleTab({ navigations = 0, threshold = 40 } = {}) {
+  return Number(navigations) >= Number(threshold);
+}
+
 /**
  * ping 目标标签，判断 content script 是否已就绪。
  * @returns {Promise<object|null>} pageHealth 响应，或 null
@@ -121,8 +145,10 @@ export async function waitForContentReady({
   tries = DEFAULT_TIMING.readyTries,
   delayMs = DEFAULT_TIMING.readyMs,
 }) {
+  let lastPage = null;
   for (let i = 0; i < Math.max(1, tries); i++) {
     const page = await pingTab({ send, tabId });
+    if (page) lastPage = page;
     // 能应答 ≠ 内容可用：isUsable 用来要求"页面已脱离加载态"
     if (page && (!isUsable || isUsable(page))) return { ok: true, page };
     if (checkRisk) {
@@ -131,7 +157,12 @@ export async function waitForContentReady({
     }
     if (i < tries - 1) await sleep(delayMs);
   }
-  return { ok: false, timeout: true, reason: isUsable ? '页面加载超时（内容始终未就绪）' : '等待页面响应超时（内容脚本未注入）' };
+  return {
+    ok: false,
+    timeout: true,
+    page: lastPage, // 失败也要把"最后看到的页面状态"带回去，便于给出可定位的错误信息
+    reason: isUsable ? '页面加载超时（内容始终未就绪）' : '等待页面响应超时（内容脚本未注入）',
+  };
 }
 
 /**

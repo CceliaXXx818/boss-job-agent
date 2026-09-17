@@ -97,3 +97,18 @@ describe('页面加载态：能应答 ≠ 内容可用（真实事故：打招�
     expect(content).toMatch(/async function waitForPageReady\(\{ tries = 12, delayMs = 1200 \} = \{\}\)/);
   });
 });
+
+describe('失败现场证据：pageHealth 必须带回"页面显示了什么"', () => {
+  it('pageHealth 含 bodyPreview（截断 + 压缩空白）', () => {
+    expect(content).toMatch(/bodyPreview:/);
+    const body = content.slice(content.indexOf('function pageHealth()'), content.indexOf('function respondSync'));
+    expect(body).toContain('.replace(/\\s+/g, \' \')');
+    expect(body).toContain('.slice(0, 160)');
+  });
+
+  it('pageHealth 同时含 loading / textLength（供上游判断内容是否可用）', () => {
+    const body = content.slice(content.indexOf('function pageHealth()'), content.indexOf('function respondSync'));
+    expect(body).toContain('loading: isPageLoading()');
+    expect(body).toContain('textLength:');
+  });
+});

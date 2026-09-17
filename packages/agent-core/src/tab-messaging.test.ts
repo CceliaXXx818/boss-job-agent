@@ -9,10 +9,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   DEFAULT_TIMING,
+  describePageState,
   friendlyMessageError,
   isRetryableMessageError,
   pingTab,
   sendMessageReliably,
+  shouldBringTabToFront,
+  shouldRecycleTab,
   waitForContentReady,
 } from '../../../extension/tab-messaging.js';
 
@@ -276,5 +279,65 @@ describe('bfcache 与页面内容就绪（真实事故）', () => {
     expect(res.ok).toBe(false);
     expect(res.timeout).toBe(true);
     expect(res.reason).toContain('加载超时');
+  });
+});
+
+describe('"页面刷不开"的可诊断性与自愈（真实事故）', () => {
+  const stalled = {
+    url: 'https://www.zhipin.com/job_detail/x.html',
+    title: 'BOSS直聘',
+    readyState: 'interactive',
+    loading: true,
+    textLength: 12,
+    bodyPreview: '加载中，请稍候',
+  };
+
+  it('describePageState：把"刷不开"的现场变成可读证据', () => {
+    const text = describePageState(stalled);
+    expect(text).toContain('标题「BOSS直聘」');
+    expect(text).toContain('readyState=interactive');
+    expect(text).toContain('loading=true');
+    expect(text).toContain('现场：「加载中，请稍候」');
+  });
+
+  it('describePageState：拿不到页面信息时也要明说（不能静默）', () => {
+    expect(describePageState(null)).toContain('内容脚本无响应');
+  });
+
+  it('超时也要带回"最后看到的页面"，否则错误信息里没有现场', async () => {
+    const send = async () => stalled;
+    const res = await waitForContentReady({
+      send,
+      sleep: noSleep,
+      tabId: 1,
+      isUsable: (p: { loading?: boolean }) => p.loading === false,
+      tries: 3,
+      delayMs: 1,
+    });
+    expect(res.ok).toBe(false);
+    expect(res.page).toEqual(stalled); // ← 关键：失败时仍带回现场
+    expect(describePageState(res.page)).toContain('加载中');
+  });
+
+  it('自愈 ①：连续 2 次页面级失败后把执行标签切到前台', () => {
+    expect(shouldBringTabToFront({ consecutivePageFailures: 0 })).toBe(false);
+    expect(shouldBringTabToFront({ consecutivePageFailures: 1 })).toBe(false);
+    expect(shouldBringTabToFront({ consecutivePageFailures: 2 })).toBe(true);
+    expect(shouldBringTabToFront({ consecutivePageFailures: 5, alreadyFront: true })).toBe(false);
+  });
+
+  it('自愈 ②：同一标签导航次数达到阈值后重建（默认 40 次）', () => {
+    expect(shouldRecycleTab({ navigations: 10 })).toBe(false);
+    expect(shouldRecycleTab({ navigations: 40 })).toBe(true);
+    expect(shouldRecycleTab({ navigations: 5, threshold: 5 })).toBe(true);
+  });
+
+  it('适配器接线：navigateAndAsk 会按需切前台；withTab 会按需重建标签', () => {
+    const bg = require('node:fs').readFileSync('extension/background.js', 'utf8') as string;
+    expect(bg).toMatch(/shouldBringTabToFront\(\{ consecutivePageFailures/);
+    expect(bg).toMatch(/chrome\.tabs\.update\(tabId, \{ active: true \}\)/);
+    expect(bg).toMatch(/shouldRecycleTab\(\{ navigations/);
+    expect(bg).toMatch(/chrome\.tabs\.remove\(/);
+    expect(bg).toMatch(/describePageState\(ready\.page\)/);
   });
 });

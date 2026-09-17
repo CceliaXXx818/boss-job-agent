@@ -33,7 +33,15 @@ import * as greeting from './greeting-builder.js';
 import * as ai from './ai-client.js';
 import * as core from './core-logic.js';
 import * as dailyReport from './daily-report-service.js';
-import { classifyMessageError, pingTab, sendMessageReliably, waitForContentReady } from './tab-messaging.js';
+import {
+  classifyMessageError,
+  describePageState,
+  pingTab,
+  sendMessageReliably,
+  shouldBringTabToFront,
+  shouldRecycleTab,
+  waitForContentReady,
+} from './tab-messaging.js';
 import { classifyPageRisk, inspectJobListPage } from './page-risk.js';
 
 /** 每次唤醒最多推进的 bounded step 数（每个 step 之间都会 persist） */
@@ -57,6 +65,8 @@ const CONTENT_READY_MS = CONTENT_WAIT_MS;
 /** 抓到 0 条时的"再等等看"策略：列表是异步渲染的，不能一次为空就下结论 */
 const EMPTY_LIST_RETRIES = 3;
 const EMPTY_LIST_WAIT_MS = 1500;
+/** 同一执行标签累计导航多少次后重建（长时间反复导航可能退化/卡死） */
+const TAB_RECYCLE_AFTER = 40;
 
 const GREET_LABELS = ['打招呼', '立即沟通', '和TA聊聊', '开聊', '开始沟通', '打个招呼', '马上沟通', '立即开聊', '聊一聊', '发消息'];
 
@@ -180,6 +190,16 @@ function createBrowserAdapter() {
 
   async function withTab(job) {
     const rt = await loadRuntime();
+    // 自愈 ②：同一标签反复导航后可能退化 → 主动重建一个干净标签
+    if (rt.autopilotTabId && shouldRecycleTab({ navigations: rt.tabNavCount ?? 0, threshold: TAB_RECYCLE_AFTER })) {
+      try {
+        await chrome.tabs.remove(rt.autopilotTabId);
+      } catch {
+        /* 标签可能已被关闭 */
+      }
+      await patchRuntime((r) => ({ ...r, autopilotTabId: null, tabNavCount: 0 }));
+      console.log('[autopilot] 执行标签导航次数达到阈值，已重建');
+    }
     let tabId = rt.autopilotTabId;
     if (tabId) {
       const tab = await getTabOrNull(tabId);
@@ -204,6 +224,18 @@ function createBrowserAdapter() {
   async function navigateAndAsk(tabId, url, message, { validate = null, readyCheck = null } = {}) {
     const tabRisk = await checkTabRisk(tabId);
     if (tabRisk?.risk) return { ok: false, risk: tabRisk.risk, reason: tabRisk.reason };
+
+    // 自愈 ①：连续页面级失败说明"后台标签可能渲染/交互受限" → 把它切到前台再试一次
+    const rtBefore = await loadRuntime();
+    if (shouldBringTabToFront({ consecutivePageFailures: rtBefore.consecutivePageFailures ?? 0 })) {
+      try {
+        await chrome.tabs.update(tabId, { active: true });
+        await sleep(1200);
+        console.log('[autopilot] 连续页面级失败，已把执行标签切到前台重试');
+      } catch {
+        /* 切前台失败不影响后续流程 */
+      }
+    }
 
     await chrome.tabs.update(tabId, { url });
 
@@ -233,13 +265,21 @@ function createBrowserAdapter() {
       tries: CONTENT_WAIT_TRIES,
       delayMs: CONTENT_READY_MS,
     });
+    // 记录导航次数（用于标签重建判断）
+    await patchRuntime((r) => ({ ...r, tabNavCount: (r.tabNavCount ?? 0) + 1 }));
+
     if (!ready.ok) {
       if (ready.risk) return { ok: false, risk: ready.risk, reason: ready.reason };
       if (ready.timeout && readyCheck) {
         // 页面迟迟没离开加载态 → 这是"该页面"的问题，不是工具坏（上层按 kind 决定是否跳过）
-        return { ok: false, kind: 'page', error: '页面加载超时（内容始终处于加载中）' };
+        // 带上现场证据（标题/readyState/可见文字），否则用户只能看到"刷不开"
+        return {
+          ok: false,
+          kind: 'page',
+          error: `页面加载超时（内容始终处于加载中）${describePageState(ready.page)}`,
+        };
       }
-      return { ok: false, retryable: true, error: ready.reason ?? '页面未就绪' };
+      return { ok: false, retryable: true, error: `${ready.reason ?? '页面未就绪'}${describePageState(ready.page)}` };
     }
 
     const sent = await sendMessageReliably({

@@ -130,6 +130,8 @@ export function emptyRuntime(now = new Date()) {
 
     autopilotTabId: null,
     tabFailureCount: 0,
+    /** 当前执行标签累计导航次数（达到阈值后重建标签） */
+    tabNavCount: 0,
     consecutiveToolFailures: 0,
     consecutivePageFailures: 0,
     skippedDetailJobs: [],
